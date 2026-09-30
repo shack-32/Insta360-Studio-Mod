@@ -3,7 +3,7 @@
     Insta360 Studio Mod Suite Installer & Manager
 .DESCRIPTION
     Applies 2.4x export speedup, universal custom LUT support, in-app native
-    LUT selector dropdown, and unlocked video adjustments.
+    LUT selector dropdown and AquaVision-style preset cards, and unlocked video adjustments.
 #>
 param(
     [string]$InstallDir = "C:\Program Files\Insta360 Studio",
@@ -22,9 +22,8 @@ if (-not $isAdmin) {
 
 $ScriptDir = $PSScriptRoot
 $PythonScript = Join-Path $ScriptDir "patch_studio.py"
-$QmlSource = Join-Path $ScriptDir "LutContent.qml"
-$QmlDestDir = Join-Path $InstallDir "data\i_log"
-$QmlDest = Join-Path $QmlDestDir "LutContent.qml"
+$QmlSource = Join-Path $ScriptDir "L.qml"
+$QmlDest = "C:\Users\Public\L.qml"
 $ServiceScript = Join-Path $ScriptDir "lut_service.py"
 $RegPath = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run"
 $RegKey = "Insta360LutService"
@@ -67,11 +66,12 @@ if ($Uninstall) {
     Write-Host "`nDeploying QML UI components..." -ForegroundColor Yellow
     if (Test-Path $QmlSource) {
         Copy-Item -Path $QmlSource -Destination $QmlDest -Force
-        Write-Host "[✓] Deployed LutContent.qml to $QmlDest" -ForegroundColor Green
+        Write-Host "[✓] Deployed L.qml to $QmlDest" -ForegroundColor Green
     }
 
     # Grant write permissions to data\i_log for background switcher
-    icacls $QmlDestDir /grant "Users:(OI)(CI)F" /T | Out-Null
+    $iLogDir = Join-Path $InstallDir "data\i_log"
+    icacls $iLogDir /grant "Users:(OI)(CI)F" /T | Out-Null
 
     # Configure Autostart for Background LUT Switcher Service
     Write-Host "`nConfiguring Background LUT Switcher Service..." -ForegroundColor Yellow
