@@ -1,0 +1,20 @@
+# Ignore large proprietary binaries (exceeds GitHub 100MB limit)
+*.exe
+*.dll
+*.stock
+*.bak
+*.orig
+
+# Python & System caches
+__pycache__/
+*.py[cod]
+*$py.class
+.vscode/
+.idea/
+
+# Keep mod scripts and utilities
+!*.pyw
+!*.bat
+!*.ps1
+!*.json
+!*.md

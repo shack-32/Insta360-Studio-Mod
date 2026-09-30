@@ -1,0 +1,83 @@
+{
+  "version": "1.0",
+  "name": "Insta360 Studio Mod Suite",
+  "description": "2.4x Export Speedup (Denoise Bypass), Universal Custom LUT Support, Live LUT Switcher, and Unlocked Color Adjustments",
+  "patches": [
+    {
+      "target": "studio_worker.dll",
+      "name": "Denoise Bypass (2.4x Export Speedup)",
+      "description": "Bypasses internal multi-frame spatio-temporal denoiser, reducing export times by over 50% while preserving fine natural sensor grain.",
+      "file_offset": "0x31CE730",
+      "virtual_address": "0x1831CF130",
+      "original_hex": "48895C241855",
+      "patched_hex": "31C0C3909090",
+      "instructions_original": "mov [rsp+0x18], rbx; push rbp",
+      "instructions_patched": "xor eax, eax; ret; nop; nop; nop"
+    },
+    {
+      "target": "studio_worker.dll",
+      "name": "Export LUT Forwarding",
+      "description": "Forwards UI enable_lut flag [rsi+0xa2] directly to the export render pipeline [rsi+0x1fc], ensuring custom LUT is baked into exported MP4/ProRes.",
+      "file_offset": "0x31E2352",
+      "virtual_address": "0x1831E2D52",
+      "original_hex": "8886FC0100008B868C010000",
+      "patched_hex": "8A86A20000008886FC010000",
+      "instructions_original": "mov [rsi+0x1fc], al; mov eax, [rsi+0x18c]",
+      "instructions_patched": "mov al, [rsi+0xa2]; mov [rsi+0x1fc], al"
+    },
+    {
+      "target": "Insta360 Studio.exe",
+      "name": "Universal LUT Engine Support",
+      "description": "Forces supportLut getter to return true (1), enabling the LUT rendering pipeline for all footage (Single Lens, 360, Flat, Non-Log).",
+      "file_offset": "0x30119C0",
+      "virtual_address": "0x1430123C0",
+      "original_hex": "0FB6411DC3",
+      "patched_hex": "B001C39090",
+      "instructions_original": "movzx eax, byte ptr [rcx+0x1d]; ret",
+      "instructions_patched": "mov al, 1; ret; nop; nop"
+    },
+    {
+      "target": "Insta360 Studio.exe",
+      "name": "Media Load LUT Property Flag",
+      "description": "Sets the LUT property flag to true on media loading.",
+      "file_offset": "0x3750A25",
+      "virtual_address": "0x143751425",
+      "original_hex": "0FB6D0",
+      "patched_hex": "B20190",
+      "instructions_original": "movzx edx, al",
+      "instructions_patched": "mov dl, 1; nop"
+    },
+    {
+      "target": "Insta360 Studio.exe",
+      "name": "Video Adjustments Unlock (filtersModifiable)",
+      "description": "Forces filtersModifiable to return true, decoupling color adjustments (Exposure, Saturation, Contrast, Color Plus) from the LUT toggle state.",
+      "file_offset": "0x35A3440",
+      "virtual_address": "0x1435A3E40",
+      "original_hex": "40534883EC20",
+      "patched_hex": "B001C3909090",
+      "instructions_original": "push rbx; sub rsp, 0x20",
+      "instructions_patched": "mov al, 1; ret; nop; nop; nop"
+    },
+    {
+      "target": "Insta360 Studio.exe",
+      "name": "Adjustment Reset Hook Bypass",
+      "description": "Bypasses the log footage callback that resets/zeroes out user color adjustments when LUT is toggled off.",
+      "file_offset": "0x35A3480",
+      "virtual_address": "0x1435A3E80",
+      "original_hex": "40534883EC20",
+      "patched_hex": "C39090909090",
+      "instructions_original": "push rbx; sub rsp, 0x20",
+      "instructions_patched": "ret; nop; nop; nop; nop; nop"
+    },
+    {
+      "target": "Insta360 Studio.exe",
+      "name": "QML LUT Drawer Visibility",
+      "description": "Forces QML InsDrawer for Restore LUT to be visible for all video formats.",
+      "file_offset": "0x6B31D00",
+      "original_hex": "766965774D6F64656C2E737570706F72744C7574",
+      "patched_hex": "7472756520202020202020202020202020202020",
+      "instructions_original": "viewModel.supportLut",
+      "instructions_patched": "true                "
+    }
+  ]
+}
