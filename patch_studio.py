@@ -36,15 +36,16 @@ def apply_patches(install_dir=DEFAULT_INSTALL_DIR, reverse=False):
             print(f"[!] Target not found: {file_path}")
             continue
 
-        # Create backup if not already present
-        if not os.path.exists(backup_path):
-            print(f"[*] Creating backup: {backup_path}")
-            shutil.copyfile(file_path, backup_path)
-
-        with open(file_path, "rb") as f:
-            data = bytearray(f.read())
+        try:
+            with open(file_path, "rb") as f:
+                data = bytearray(f.read())
+        except PermissionError:
+            print(f"[!] Permission denied reading {file_path}. Please run as Administrator.")
+            continue
 
         print(f"\n[*] Processing {target_name} ({len(file_patches)} patches)...")
+        modified = False
+
         for p in file_patches:
             offset = int(p["file_offset"], 16)
             orig_bytes = bytes.fromhex(p["original_hex"])
@@ -56,22 +57,39 @@ def apply_patches(install_dir=DEFAULT_INSTALL_DIR, reverse=False):
 
             curr_bytes = data[offset:offset+len(dst_bytes)]
             if curr_bytes == dst_bytes:
-                print(f"  [✓] {p['name']} already {'reverted' if reverse else 'patched'}.")
+                print(f"  [OK] {p['name']} already {'reverted' if reverse else 'patched'}.")
             elif curr_bytes == src_bytes:
+                # Ensure backup exists before first modification
+                if not os.path.exists(backup_path):
+                    local_stock = os.path.join(SCRIPT_DIR, target_name.replace(".exe", "_stock.exe").replace(".dll", "_stock.dll"))
+                    if os.path.exists(local_stock):
+                        try:
+                            shutil.copyfile(local_stock, backup_path)
+                            print(f"  [*] Created backup from local stock: {backup_path}")
+                        except Exception:
+                            pass
+                    else:
+                        try:
+                            shutil.copyfile(file_path, backup_path)
+                            print(f"  [*] Created backup: {backup_path}")
+                        except Exception:
+                            pass
+
                 data[offset:offset+len(dst_bytes)] = dst_bytes
-                print(f"  [+] {action} {p['name']} at {p['file_offset']} (VA {p.get('virtual_address', 'N/A')})")
+                modified = True
+                print(f"  [+] {action} {p['name']} at {p['file_offset']}")
             else:
-                print(f"  [!] Warning: Byte mismatch at {p['file_offset']}: expected {src_bytes.hex()}, got {curr_bytes.hex()}")
+                print(f"  [!] Warning: Byte mismatch at {p['file_offset']}: expected {src_bytes.hex()[:16]}..., got {curr_bytes.hex()[:16]}...")
 
-        with open(file_path, "wb") as f:
-            f.write(data)
-        print(f"[✓] Saved {file_path}")
-
-    # Ensure permissions
-    try:
-        subprocess.run(["icacls", install_dir, "/grant", "Users:(OI)(CI)F", "/T"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    except Exception:
-        pass
+        if modified:
+            try:
+                with open(file_path, "wb") as f:
+                    f.write(data)
+                print(f"  [OK] Saved {file_path}")
+            except PermissionError:
+                print(f"[!] Access denied writing to {file_path}. Run this script as Administrator.")
+        else:
+            print(f"  [OK] All patches for {target_name} are already up-to-date.")
 
     action_label = "Uninstalled (Restored Stock)" if reverse else "Applied Successfully"
     print(f"\n[OK] Insta360 Studio Mods {action_label}!")

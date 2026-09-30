@@ -10,19 +10,22 @@ Advanced reverse-engineered performance optimizations, export enhancements, and 
   - Bypasses Insta360 Studio's heavy internal multi-frame spatio-temporal denoise algorithm.
   - Cuts export times by **over 50%** (e.g., 60 seconds down to 25 seconds).
   - Preserves fine, natural sensor texture and crisp organic grain instead of digital over-smoothing / plastic skin artifacts.
-- **🎨 Universal Custom LUT Pipeline**:
+- **🎨 In-App Native Look / LUT Selector**:
+  - Integrated directly inside the native **Restore LUT** drawer (`InsDrawer`) in the right sidebar.
+  - Uses native dark-theme styling (`InsComboBox` with double-arrow indicator) matching Insta360 Studio's UI perfectly.
+  - Switch looks seamlessly on the fly—preview and rendering pipeline update instantly in real time without restarting the app!
+- **🎬 Universal Custom LUT Pipeline**:
   - Unlocks the **Restore LUT** engine for **all** footage (Single Lens, 360°, Flat, Non-Log, Standard profiles).
   - Bakes your custom 3D LUTs directly into final exported videos (`.mp4`, ProRes, etc.), not just preview.
 - **🎛️ Fully Independent Video Adjustments**:
   - Decoupled from the LUT switch. You can tweak Exposure, Contrast, Saturation, Brilliance, Highlights, Shadows, and Color Plus whether the LUT is **ON** or **OFF**.
   - Turning the LUT off will **never** lock or wipe your color adjustments.
-- **🔄 Real-Time Live LUT Switcher**:
-  - Floating dark-mode companion tool (`Insta360 Live LUT Selector`) that stays alongside Studio.
-  - Switch between any `.cube` LUT in real time with a single click.
-  - Flip the LUT toggle OFF then ON in Studio to reload live—**zero app restarts required**.
+- **🔄 Dual Switching Options**:
+  - **In-App**: Select directly from the "Look" dropdown inside Studio's right sidebar.
+  - **Companion Window**: Standalone dark-mode GUI (`Insta360 Live LUT Selector`) for multi-monitor setups or quick previews.
 - **📁 Drag-and-Drop LUT Library**:
   - Includes a curated pack of 24 cinematic look LUTs (Kodak 2383, CineStill 800T, Night Vision, Teal/Orange, S-Log conversions, etc.).
-  - Drop any standard `.cube` file into the `Custom_LUTs` folder to use it immediately.
+  - Drop any standard `.cube` file into `Custom_LUTs` to have it appear immediately in the dropdown.
 
 ---
 
@@ -38,7 +41,8 @@ Advanced reverse-engineered performance optimizations, export enhancements, and 
 3. The installer will automatically:
    - Create clean backups of your original binaries (`.stock`).
    - Apply all binary patches in-place.
-   - Configure Desktop shortcuts for the **Live LUT Selector** and **Mod Manager**.
+   - Deploy native QML dropdown components.
+   - Configure the background LUT switcher service and Desktop shortcuts.
 
 ### Method 2: Python Patcher
 ```cmd
@@ -51,13 +55,14 @@ python patch_studio.py --restore
 
 ---
 
-## 🎬 How to Use the Live LUT Switcher
+## 🎬 How to Use the In-App LUT Selector
 
-1. Double-click the **Insta360 Live LUT Selector** desktop shortcut.
-2. Select any LUT from the dropdown menu (or click **📁 Open LUTs Folder** to drop in your own `.cube` files).
-3. In **Insta360 Studio**: Flip the **Restore LUT** switch **OFF then ON**.
-4. Studio will immediately re-read the active `.cube` file and update your playback and preview in real time!
-5. Export your video—the selected LUT is cleanly baked into the exported file with the 2.4× export speedup.
+1. Open **Insta360 Studio** and load any video (Single Lens, 360°, Flat, or Log).
+2. In the right sidebar panel, click **Restore LUT** to expand the drawer.
+3. Toggle the switch to **ON**.
+4. In the **Look** dropdown, click to choose any LUT (Stock Rec.709, Kodak 2383, CineStill, Night Vision, etc.).
+5. The preview canvas updates instantly!
+6. Click **Export**—your video exports at **2.4× speed** with your custom LUT baked in.
 
 ---
 
@@ -73,7 +78,7 @@ All patches are documented in [`patches.json`](patches.json) with exact byte off
 | `Insta360 Studio.exe` | `0x3750A25` | `0x143751425` | `0F B6 D0` | `B2 01 90` | **Media Load Flag**: Sets LUT property flag on clip open. |
 | `Insta360 Studio.exe` | `0x35A3440` | `0x1435A3E40` | `40 53 48 83 EC 20` | `B0 01 C3 90 90 90` | **Filters Modifiable Unlock**: `filtersModifiable()` returns `1`, decoupling color grading from LUT state. |
 | `Insta360 Studio.exe` | `0x35A3480` | `0x1435A3E80` | `40 53 48 83 EC 20` | `C3 90 90 90 90 90` | **Adjustment Reset Bypass**: Neutralizes callback that wiped color adjustments when LUT was toggled off. |
-| `Insta360 Studio.exe` | `0x6B31D00` | — | `viewModel.supportLut` | `true                ` | **QML UI Unlock**: Keeps "Restore LUT" drawer visible for all video formats. |
+| `Insta360 Studio.exe` | `0x6B31BEF` | — | *(Stock 536B LutView.qml)* | *(InsDrawer + Loader)* | **In-App Look Dropdown**: Embeds native QtQuick Loader inside `InsDrawer` binding to `LutContent.qml`. |
 
 ---
 
@@ -82,10 +87,11 @@ All patches are documented in [`patches.json`](patches.json) with exact byte off
 - `Install-Insta360Mod.ps1` & `Install-Insta360Mod.bat`: One-click installer and uninstaller.
 - `patch_studio.py`: Standalone cross-platform patch engine.
 - `patches.json`: Machine-readable byte patch definitions.
+- `LutContent.qml`: Native QML UI component rendering the Look dropdown inside the drawer.
+- `lut_service.py`: Lightweight background loopback service for dynamic LUT loading and switching.
 - `ToggleDenoise.ps1`: Interactive terminal control panel to toggle mods and manage presets.
-- `Insta360_LUT_Picker.pyw`: Real-time GUI LUT switcher.
+- `Insta360_LUT_Picker.pyw`: Real-time companion GUI LUT switcher.
 - `Custom_LUTs/`: Pack of 24 3D cinematic `.cube` LUTs.
-- `sharpen_param_*.json`: Edge-enhancement tuning presets (Stock, Soft, Off).
 
 ---
 
