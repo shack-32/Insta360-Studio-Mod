@@ -270,12 +270,44 @@ class LutRequestHandler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(resp)
 
+        elif path == "/denoise":
+            flag_file = r"C:\Users\Public\denoise.flag"
+            if "enabled" in query:
+                val = query["enabled"][0].strip().lower()
+                if val in ("1", "true", "yes", "on"):
+                    try:
+                        with open(flag_file, "wb") as f:
+                            f.write(b"1")
+                        log("Export Noise Reduction ENABLED (C:\\Users\\Public\\denoise.flag created)")
+                    except Exception as e:
+                        log(f"Error creating denoise flag: {e}")
+                else:
+                    if os.path.exists(flag_file):
+                        try:
+                            os.remove(flag_file)
+                            log("Export Noise Reduction DISABLED (C:\\Users\\Public\\denoise.flag removed)")
+                        except Exception as e:
+                            log(f"Error removing denoise flag: {e}")
+            is_enabled = os.path.exists(flag_file)
+            resp = json.dumps({"status": "ok", "enabled": is_enabled}).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(resp)))
+            self.end_headers()
+            self.wfile.write(resp)
+
         else:
             self.send_response(404)
             self.end_headers()
 
 def run_server():
     reset_to_stock()
+    flag_file = r"C:\Users\Public\denoise.flag"
+    if os.path.exists(flag_file):
+        try:
+            os.remove(flag_file)
+        except Exception:
+            pass
     files = get_lut_files()
     log(f"Server started on port {PORT}. Rescanned Custom_LUTs: found {len(files)} .cube files.")
     server = ThreadingHTTPServer(("127.0.0.1", PORT), LutRequestHandler)

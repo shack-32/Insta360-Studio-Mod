@@ -49,13 +49,21 @@ function Get-DenoiseStatus {
     if (-not (Test-Path $Path)) { return "NOT FOUND" }
     try {
         $stream = [System.IO.File]::OpenRead($Path)
+        $stream.Seek(0x31CEC0E, [System.IO.SeekOrigin]::Begin) | Out-Null
+        $buf = New-Object byte[] 5
+        $stream.Read($buf, 0, 5) | Out-Null
+        $stream.Close()
+        $hex = [System.BitConverter]::ToString($buf) -replace '-', ''
+        if ($hex -eq "E83DFB8903") { return "IN-APP TOGGLE (Export Dialog Controlled - Default OFF / Grain Preserved)" }
+
+        $stream = [System.IO.File]::OpenRead($Path)
         $stream.Seek(0x31CE730, [System.IO.SeekOrigin]::Begin) | Out-Null
         $buf = New-Object byte[] 6
         $stream.Read($buf, 0, 6) | Out-Null
         $stream.Close()
-        $hex = [System.BitConverter]::ToString($buf) -replace '-', ''
-        if ($hex -eq "48895C241855") { return "ON (Stock - Multi-Frame Denoise Active)" }
-        if ($hex -eq "31C0C3909090") { return "OFF (Bypassed - 2.4x Faster, Natural Grain)" }
+        $hex2 = [System.BitConverter]::ToString($buf) -replace '-', ''
+        if ($hex2 -eq "31C0C3909090") { return "OFF (Bypassed - 2.4x Faster, Natural Grain)" }
+        if ($hex2 -eq "48895C241855") { return "ON (Stock - Multi-Frame Denoise Active)" }
         return "UNKNOWN ($hex)"
     } catch {
         return "ERROR: $_"

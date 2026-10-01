@@ -5,14 +5,25 @@
   "patches": [
     {
       "target": "studio_worker.dll",
-      "name": "Denoise Bypass (2.4x Export Speedup)",
-      "description": "Bypasses internal multi-frame spatio-temporal denoiser, reducing export times by over 50% while preserving fine natural sensor grain.",
-      "file_offset": "0x31CE730",
-      "virtual_address": "0x1831CF130",
-      "original_hex": "48895C241855",
-      "patched_hex": "31C0C3909090",
-      "instructions_original": "mov [rsp+0x18], rbx; push rbp",
-      "instructions_patched": "xor eax, eax; ret; nop; nop; nop"
+      "name": "Dynamic Export Denoise Hook (Call Site)",
+      "description": "Reroutes export pipeline denoiser instantiation to dynamic helper that checks C:\\Users\\Public\\denoise.flag (controlled by export dialog toggle).",
+      "file_offset": "0x31CEC0E",
+      "virtual_address": "0x1831CF60E",
+      "original_hex": "E81DFBFFFF",
+      "patched_hex": "E83DFB8903",
+      "instructions_original": "call 0x1831cf130",
+      "instructions_patched": "call 0x186a6f150"
+    },
+    {
+      "target": "studio_worker.dll",
+      "name": "Dynamic Export Denoise Helper (.text Cave)",
+      "description": "Helper function in .text cave that queries GetFileAttributesA. If denoise.flag exists, branches to stock denoiser; if absent, returns 0 to skip denoiser (preserving grain + 2.4x speed).",
+      "file_offset": "0x6A6E750",
+      "virtual_address": "0x186A6F150",
+      "original_hex": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+      "patched_hex": "4883EC28488D0D1D000000FF150F1400004883C42883F8FF740A89DA4889F1E9BCFF75FC31C0C390433A5C55736572735C5075626C69635C64656E6F6973652E666C616700",
+      "instructions_original": "16-byte aligned padding (null bytes)",
+      "instructions_patched": "sub rsp, 28h; lea rcx, flag; call GetFileAttributesA; add rsp, 28h; cmp eax, -1; je skip; mov edx, ebx; mov rcx, rsi; jmp real_func; skip: xor eax, eax; ret"
     },
     {
       "target": "studio_worker.dll",
@@ -155,6 +166,16 @@
       "patched_hex": "696D706F7274205174517569636B0A696D706F7274205174517569636B2E4C61796F7574730A696D706F727420496E73545320312E300A696D706F727420436F6D6D6F6E2E566965774D6F64656C20312E300A696D706F727420222E2E2F2E2E2F2E2E2F2E2E2F696E735F636F6E74726F6C2F636F6D6D6F6E2F636F6E7461696E6572220A496E734472617765727B69643A723B72657175697265642070726F7065727479204D6564696150726F63657373566965774D6F64656C20766965774D6F64656C3B7469746C653A54532E696E7354722822726573746F72652E6C757422293B76697369626C653A747275653B636865636B65643A766965774D6F64656C2E656E61626C654C75740A436F6E6E656374696F6E737B7461726765743A723B66756E6374696F6E206F6E537769746368436C69636B65642863297B766965774D6F64656C2E6D6F646966794C7574456E61626C652863293B766965774D6F64656C2E7265706F72744C7574456E61626C652863297D7D0A436F6C756D6E4C61796F75747B4C61796F75742E66696C6C57696474683A747275650A4C6F616465727B4C61796F75742E66696C6C57696474683A747275653B736F757263653A2266696C653A2F2F2F433A2F55736572732F5075626C69632F4C2E716D6C223B6F6E4C6F616465643A7B6966286974656D296974656D2E766965774D6F64656C3D722E766965774D6F64656C7D7D7D7D20202020202020",
       "instructions_original": "Stock LutView.qml (InsDrawer without ColumnLayout)",
       "instructions_patched": "InsDrawer with ColumnLayout + Loader pointing to Public/L.qml"
+    },
+    {
+      "target": "Insta360 Studio.exe",
+      "name": "Export Dialog Noise Reduction Toggle (SingleVideoExport.qml)",
+      "description": "Embeds dynamic Noise Reduction checkbox directly below Bitrate setting in videoParamsGrid, defaulting to OFF (grain preserved, 2.4x export speed) and communicating state via background service / Public flag.",
+      "file_offset": "0x6B1AF65",
+      "original_hex": "zlib stream (uncompressed 50323 bytes, compressed 7281 bytes)",
+      "patched_hex": "zlib stream with Denoise row below bitrate (uncompressed 49911 bytes, compressed 6659 bytes + 622 padding zeros)",
+      "instructions_original": "Stock SingleVideoExport.qml without denoise controls",
+      "instructions_patched": "SingleVideoExport.qml with Denoise label + InsMultiCheckBox below bitrate setting"
     }
   ]
 }

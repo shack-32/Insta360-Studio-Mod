@@ -6,10 +6,11 @@ Advanced reverse-engineered performance optimizations, export enhancements, Moti
 
 ## ✨ Features
 
-- **⚡ 2.4× Export Speedup (Denoise Bypass)**:
-  - Bypasses Insta360 Studio's heavy internal multi-frame spatio-temporal denoise algorithm in `studio_worker.dll`.
-  - Cuts export times by **over 50%** (e.g., 60 seconds down to 25 seconds).
-  - Preserves crisp, natural sensor texture and fine organic grain instead of digital over-smoothing and plastic skin artifacts.
+- **⚡ In-App Export Dialog Noise Reduction Toggle (2.4× Export Speedup / Grain Preservation)**:
+  - Added an interactive **Noise Reduction** toggle directly inside the in-app video export dialog, positioned conveniently **below the Bitrate setting**.
+  - **Default OFF**: Automatically bypasses Insta360 Studio's heavy internal multi-frame spatio-temporal denoise algorithm in `studio_worker.dll`. Cuts export times by **over 50%** (2.4× speedup) while preserving crisp, natural sensor texture and fine organic grain.
+  - **Toggle ON**: Instantly re-enables stock multi-frame spatio-temporal noise reduction for that export when smooth digital de-noised footage is needed.
+  - Dynamically controlled in real time—no restarting the app or re-patching binaries required!
 - **🚫 Complete Motion ND Fix & Export Bypass**:
   - **UI Default OFF**: Patched all 5 media loading paths in `Insta360 Studio.exe` so Motion ND (RealSmartMotionBlur) always starts **OFF** by default on clip load.
   - **Export Render Bypass**: Neutralized the forced motion blur routine in `studio_worker.dll` (`ProjectExporter` and Protobuf filter graph dispatcher). Resolves the bug where exported videos still rendered unwanted motion blur even when switched off in the UI.
@@ -47,8 +48,8 @@ The interactive launcher provides a live status dashboard and 4 clear segments:
 
   -- STATUS DASHBOARD ----------------------------------------------
      LUT Server Status   : [ ACTIVE - Port 8999 ]
-     LUT Library Rescan  : [ 42 .cube LUTs loaded from Custom_LUTs ]
-     Fast Export Mod     : [ ON - 2.4x Fast Export Active ]
+     LUT Library Rescan  : [ 55 .cube LUTs loaded from Custom_LUTs ]
+     Noise Reduction Mod : [ IN-APP EXPORT TOGGLE - Default OFF / Grain Preserved ]
      Motion ND Export    : [ BYPASSED - Motion Blur Disabled in Export ]
      Studio EXE Patches  : [ INSTALLED - In-App UI + Sliders Unlocked ]
      Default LUT State   : [ OFF by default / Stock Rec.709 fallback ]

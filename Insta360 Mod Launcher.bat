@@ -23,10 +23,10 @@ for /f %%A in ('powershell -NoProfile -Command "(Get-ChildItem -Path '%~dp0Custo
 
 :: Detect Denoise Bypass Mod Status in studio_worker.dll
 set "DENOISE_STATUS=[ UNKNOWN ]"
-powershell -NoProfile -Command "$stream=[System.IO.File]::OpenRead('C:\Program Files\Insta360 Studio\studio_worker.dll'); $stream.Seek(0x31CE730,0)|Out-Null; $b=New-Object byte[] 6; $stream.Read($b,0,6)|Out-Null; $stream.Close(); $h=[BitConverter]::ToString($b) -replace '-',''; if($h -eq '31C0C3909090'){exit 10} elseif($h -eq '48895C241855'){exit 11} else{exit 12}" >nul 2>&1
+powershell -NoProfile -Command "$stream=[System.IO.File]::OpenRead('C:\Program Files\Insta360 Studio\studio_worker.dll'); $stream.Seek(0x31CEC0E,0)|Out-Null; $b=New-Object byte[] 5; $stream.Read($b,0,5)|Out-Null; $stream.Close(); $h=[BitConverter]::ToString($b) -replace '-',''; if($h -eq 'E83DFB8903'){exit 10} else{exit 11}" >nul 2>&1
 set "PS_CODE=%errorlevel%"
-if "%PS_CODE%"=="10" set "DENOISE_STATUS=[ ON - 2.4x Fast Export Active ]"
-if "%PS_CODE%"=="11" set "DENOISE_STATUS=[ OFF - Stock Denoise Active ]"
+if "%PS_CODE%"=="10" set "DENOISE_STATUS=[ IN-APP EXPORT TOGGLE - Default OFF / Grain Preserved ]"
+if "%PS_CODE%"=="11" set "DENOISE_STATUS=[ STOCK - Multi-Frame Denoise Always On ]"
 
 :: Detect Motion ND Export Bypass Status in studio_worker.dll
 set "MOTION_ND_STATUS=[ UNKNOWN ]"
@@ -45,7 +45,7 @@ if "%EXE_CODE%"=="21" set "EXE_STATUS=[ STOCK - Original Unmodified EXE ]"
 echo   -- STATUS DASHBOARD ----------------------------------------------
 echo      LUT Server Status   : %SERVER_STATUS%
 echo      LUT Library Rescan  : [ !LUT_COUNT! .cube LUTs loaded from Custom_LUTs ]
-echo      Fast Export Mod     : %DENOISE_STATUS%
+echo      Noise Reduction Mod : %DENOISE_STATUS%
 echo      Motion ND Export    : %MOTION_ND_STATUS%
 echo      Studio EXE Patches  : %EXE_STATUS%
 echo      Default LUT State   : [ OFF by default / Stock Rec.709 fallback ]
@@ -61,7 +61,7 @@ echo.
 echo   ==================================================================
 echo   == SEGMENT 2: FEATURE TOGGLES (ON / OFF) ==
 echo   ==================================================================
-echo     [3] Toggle 2.4x Fast Export Mod       (Bypass AI denoise in DLL)
+echo     [3] Toggle Noise Reduction Mod        (In-App Export Dialog Hook / Stock DLL)
 echo     [4] Toggle In-App LUT UI ^& EXE Patch (Install / Remove EXE mods)
 echo     [5] Toggle LUT Background Server     (Start / Stop port 8999 service)
 echo     [6] Safe Reset Active LUT to Stock   (Restore Stock Rec.709 in i_log)
