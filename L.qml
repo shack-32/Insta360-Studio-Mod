@@ -40,18 +40,32 @@ Item {
         ["#59C173", "#a17fe0"], // 9: Cool Natural Breeze
         ["#30E8CA", "#FF007F"], // 10: Day For Night
         ["#000428", "#004e92"], // 11: Night Vision IR
-        ["#3E5151", "#DECBA4"], // 12: Interview Cool
-        ["#5614B0", "#DBD65C"], // 13: Johnny Isaya
-        ["#e65c00", "#F9D423"], // 14: Kodak 2383
-        ["#ED4264", "#FFEDBC"], // 15: Warm Amber Glow
-        ["#FF512F", "#DD2476"], // 16: Lucky Punch
-        ["#232526", "#414345"], // 17: Cinema G2
-        ["#4568DC", "#B06AB3"], // 18: Merry Men
-        ["#F3904F", "#3B4371"], // 19: Cinematic Golden Hour
-        ["#1D976C", "#93F9B9"], // 20: SMD Film
-        ["#EB5757", "#000000"], // 21: TDH Contrast
-        ["#0575E6", "#00F260"], // 22: Gamma Correct
-        ["#780206", "#061161"]  // 23: Vivid Daylight
+        ["#3E5151", "#DECBA4"], // 12: Exterior Daylight
+        ["#5614B0", "#DBD65C"], // 13: Fuji Eterna 250D 3510
+        ["#e65c00", "#F9D423"], // 14: Fuji Eterna 250D 2395
+        ["#ED4264", "#FFEDBC"], // 15: Fuji F125 2393
+        ["#FF512F", "#DD2476"], // 16: Fuji F125 2395
+        ["#232526", "#414345"], // 17: Fuji Reala 500D 2393
+        ["#4568DC", "#B06AB3"], // 18: HDR Punch
+        ["#F3904F", "#3B4371"], // 19: Hyperlapse Vivid
+        ["#1D976C", "#93F9B9"], // 20: Interior Ambient
+        ["#EB5757", "#000000"], // 21: Interview Cool
+        ["#0575E6", "#00F260"], // 22: Johnny Isaya Tone
+        ["#780206", "#061161"], // 23: Kodak 5205 3510
+        ["#CC95C0", "#DBD4B4"], // 24: Kodak 5218 2383
+        ["#74ebd5", "#ACB6E5"], // 25: Kodak 5218 2395
+        ["#FFE000", "#799F0C"], // 26: Kodak 2383 Film
+        ["#ffe259", "#ffa751"], // 27: Warm Amber Glow
+        ["#00c6ff", "#0072ff"], // 28: Lucky Punch
+        ["#B993D6", "#8CA6DB"], // 29: Cinema G2 Look
+        ["#f12711", "#f5af19"], // 30: Merry Men Rich
+        ["#11998e", "#38ef7d"], // 31: Night City Lights
+        ["#FC5C7D", "#6A82FB"], // 32: Cinematic Golden Hour
+        ["#108dc7", "#ef8e38"], // 33: SMD Film Color
+        ["#c21500", "#ffc500"], // 34: TDH Rich Contrast
+        ["#614385", "#516395"], // 35: Gamma Correct Film
+        ["#02AAB0", "#00CDAC"], // 36: Vivid Daylight
+        ["#e9d362", "#333333"]  // 37: X5 Official I-Log
     ]
 
     function getGradientColors(idx) {
@@ -112,12 +126,12 @@ Item {
         xhr.send()
     }
 
-    // Auto-retry polling until server provides list
+    // Auto-refresh timer to dynamically rescan directory
     Timer {
-        id: retryTimer
-        interval: 1000
+        id: autoRefreshTimer
+        interval: 3500
         repeat: true
-        running: root.lutFiles.length === 0
+        running: true
         onTriggered: {
             root.refreshLutList()
         }
@@ -274,6 +288,7 @@ Item {
                     width: lutCombo.width
                     implicitHeight: Math.min(contentItem.implicitHeight, 240)
                     padding: 4
+                    onAboutToShow: root.refreshLutList()
 
                     contentItem: ListView {
                         clip: true

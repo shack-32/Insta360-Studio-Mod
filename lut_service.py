@@ -9,6 +9,7 @@ from urllib.parse import urlparse, parse_qs
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 CUSTOM_LUTS_DIR = os.path.join(SCRIPT_DIR, "Custom_LUTs")
 STUDIO_ILOG_DIR = r"C:\Program Files\Insta360 Studio\data\i_log"
+LOG_FILE = os.path.join(SCRIPT_DIR, "lut_service.log")
 PORT = 8999
 
 TARGET_LUTS = [
@@ -18,9 +19,17 @@ TARGET_LUTS = [
     "Luna_I-Log_to_Rec709.cube"
 ]
 
+def log(msg):
+    try:
+        with open(LOG_FILE, "a", encoding="utf-8") as f:
+            f.write(msg + "\n")
+    except Exception:
+        pass
+
 def get_lut_files():
     if not os.path.exists(CUSTOM_LUTS_DIR):
         return []
+    # Dynamic live rescan of the Custom_LUTs directory
     files = [f for f in os.listdir(CUSTOM_LUTS_DIR) if f.lower().endswith(".cube")]
     # Ensure stock is first
     stock_files = [f for f in files if "stock" in f.lower() or f.startswith("00_")]
@@ -54,6 +63,20 @@ KNOWN_LABELS = {
     "TDH-LUT.cube": "TDH Rich Contrast",
     "TP-REC709_Gam_Corr.cube": "Gamma Correct Film",
     "Untitled_1.MVI_0401.cube": "Vivid Daylight",
+    "X5_I-Log_To_Rec.709_V1.0.cube": "X5 Official I-Log",
+    "Fuji ETERNA 250D Fuji 3510 (by Adobe).cube": "Fuji Eterna 250D 3510",
+    "Fuji ETERNA 250D Kodak 2395 (by Adobe).cube": "Fuji Eterna 250D 2395",
+    "Fuji F125 Kodak 2393 (by Adobe).cube": "Fuji F125 Kodak 2393",
+    "Fuji F125 Kodak 2395 (by Adobe).cube": "Fuji F125 Kodak 2395",
+    "Fuji REALA 500D Kodak 2393 (by Adobe).cube": "Fuji Reala 500D 2393",
+    "Kodak 5205 Fuji 3510 (by Adobe).cube": "Kodak 5205 Fuji 3510",
+    "Kodak 5218 Kodak 2383 (by Adobe).cube": "Kodak 5218 Kodak 2383",
+    "Kodak 5218 Kodak 2395 (by Adobe).cube": "Kodak 5218 Kodak 2395",
+    "Exterior.cube": "Exterior Daylight",
+    "Interior.cube": "Interior Ambient",
+    "HDR.cube": "HDR Punch",
+    "Hyperlapse.cube": "Hyperlapse Vivid",
+    "Night.cube": "Night City Lights"
 }
 
 def format_lut_label(filename):
@@ -62,12 +85,13 @@ def format_lut_label(filename):
     name = os.path.splitext(filename)[0]
     if name.startswith("00_"):
         name = name[3:]
+    name = re.sub(r'\(by Adobe\)', '', name, flags=re.IGNORECASE)
     name = re.sub(r'[\._\-]+', ' ', name)
     name = re.sub(r'\s+', ' ', name).strip()
     words = [w.capitalize() if not w.isupper() else w for w in name.split(' ')]
     name = " ".join(words)
-    if len(name) > 26:
-        name = name[:24] + ".."
+    if len(name) > 24:
+        name = name[:22] + ".."
     return name
 
 def reset_to_stock():
@@ -106,7 +130,6 @@ class LutRequestHandler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
 
     def log_message(self, format, *args):
-        # Keep silent to avoid console clutter
         pass
 
     def end_headers(self):
@@ -124,23 +147,25 @@ class LutRequestHandler(BaseHTTPRequestHandler):
         path = parsed.path
         query = parse_qs(parsed.query)
 
+        # Dynamic rescan on every request
         files = get_lut_files()
 
         if path == "/ping":
-            resp = b'{"status":"ok"}'
+            resp = json.dumps({"status": "ok", "lut_count": len(files)}).encode("utf-8")
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
             self.send_header("Content-Length", str(len(resp)))
             self.end_headers()
             self.wfile.write(resp)
 
-        elif path == "/list":
+        elif path in ("/list", "/rescan"):
             labels = [format_lut_label(f) for f in files]
             active_idx = get_active_index(files)
             resp = json.dumps({
                 "files": files,
                 "labels": labels,
-                "active_index": active_idx
+                "active_index": active_idx,
+                "count": len(files)
             }).encode("utf-8")
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
@@ -153,7 +178,8 @@ class LutRequestHandler(BaseHTTPRequestHandler):
             resp = json.dumps({
                 "status": "ok" if ok else "error",
                 "active": "00_Stock_Rec709.cube",
-                "index": 0
+                "index": 0,
+                "count": len(files)
             }).encode("utf-8")
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
@@ -172,7 +198,7 @@ class LutRequestHandler(BaseHTTPRequestHandler):
                     try:
                         shutil.copyfile(src, dest)
                         success_count += 1
-                    except Exception as e:
+                    except Exception:
                         pass
                 resp = json.dumps({
                     "status": "ok",
@@ -194,6 +220,8 @@ class LutRequestHandler(BaseHTTPRequestHandler):
 
 def run_server():
     reset_to_stock()
+    files = get_lut_files()
+    log(f"Server started on port {PORT}. Rescanned Custom_LUTs: found {len(files)} .cube files.")
     server = ThreadingHTTPServer(("127.0.0.1", PORT), LutRequestHandler)
     server.daemon_threads = True
     server.serve_forever()

@@ -17,6 +17,10 @@ if !errorlevel! equ 0 (
     set "SERVER_STATUS=[ ACTIVE - Port 8999 ]"
 )
 
+:: Dynamic Rescan of Custom_LUTs folder
+set "LUT_COUNT=0"
+for /f %%A in ('powershell -NoProfile -Command "(Get-ChildItem -Path '%~dp0Custom_LUTs' -Filter '*.cube' -File -ErrorAction SilentlyContinue).Count"') do set "LUT_COUNT=%%A"
+
 :: Detect Denoise Bypass Mod Status in studio_worker.dll
 set "DENOISE_STATUS=[ UNKNOWN ]"
 powershell -NoProfile -Command "$stream=[System.IO.File]::OpenRead('C:\Program Files\Insta360 Studio\studio_worker.dll'); $stream.Seek(0x31CE730,0)|Out-Null; $b=New-Object byte[] 6; $stream.Read($b,0,6)|Out-Null; $stream.Close(); $h=[BitConverter]::ToString($b) -replace '-',''; if($h -eq '31C0C3909090'){exit 10} elseif($h -eq '48895C241855'){exit 11} else{exit 12}" >nul 2>&1
@@ -33,6 +37,7 @@ if "%EXE_CODE%"=="21" set "EXE_STATUS=[ STOCK - Original Unmodified EXE ]"
 
 echo   -- STATUS DASHBOARD ----------------------------------------------
 echo      LUT Server Status   : %SERVER_STATUS%
+echo      LUT Library Rescan  : [ !LUT_COUNT! .cube LUTs loaded from Custom_LUTs ]
 echo      Fast Export Mod     : %DENOISE_STATUS%
 echo      Studio EXE Patches  : %EXE_STATUS%
 echo      Default LUT State   : [ OFF by default / Stock Rec.709 fallback ]
@@ -85,6 +90,7 @@ goto MENU
 :: ---------------------------------------------------------------------
 :LAUNCH_FULL
 echo.
+echo [*] Rescanning Custom_LUTs... Found !LUT_COUNT! .cube LUT files.
 echo [*] Checking LUT Background Server...
 curl.exe -s --max-time 1 http://127.0.0.1:8999/ping | findstr "ok" >nul 2>&1
 if !errorlevel! neq 0 (
@@ -151,10 +157,11 @@ if !errorlevel! equ 0 (
     powershell -NoProfile -Command "Get-CimInstance Win32_Process | Where-Object { `$_.CommandLine -like '*lut_service.py*' } | ForEach-Object { Stop-Process -Id `$_.ProcessId -Force }" >nul 2>&1
     echo [OK] Server stopped.
 ) else (
+    echo [*] Rescanning Custom_LUTs... Found !LUT_COUNT! .cube LUT files.
     echo [*] Starting LUT Background Server...
     start "" pythonw.exe "%~dp0lut_service.py"
     timeout /t 1 /nobreak >nul
-    echo [OK] Server started on port 8999.
+    echo [OK] Server started on port 8999 with !LUT_COUNT! LUTs loaded.
 )
 pause
 goto MENU
