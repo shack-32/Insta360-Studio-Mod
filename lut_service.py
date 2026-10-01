@@ -50,11 +50,12 @@ def normalize_cube_content(content_str, fallback_title="Custom Look"):
             parts = s.split()
             if len(parts) >= 3:
                 try:
-                    r = float(parts[0])
-                    g = float(parts[1])
-                    b = float(parts[2])
-                    # Crucial: trailing space before CRLF prevents MSVC stream >> float from setting eofbit
-                    data_lines.append(f"{r:.6f} {g:.6f} {b:.6f} \r\n")
+                    r = max(0.0, min(1.0, float(parts[0])))
+                    g = max(0.0, min(1.0, float(parts[1])))
+                    b = max(0.0, min(1.0, float(parts[2])))
+                    # CRITICAL: NO trailing space. Qt's QString::split(" ") creates an empty 4th token
+                    # if a trailing space is present, causing numPixel * 3 == rgb16.size() to fail and crash!
+                    data_lines.append(f"{r:.6f} {g:.6f} {b:.6f}\r\n")
                 except ValueError:
                     pass
 
