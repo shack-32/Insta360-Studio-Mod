@@ -15,6 +15,28 @@
       "instructions_patched": "xor eax, eax; ret; nop; nop; nop"
     },
     {
+      "target": "studio_worker.dll",
+      "name": "Motion ND Export Bypass (ProjectExporter)",
+      "description": "Bypasses RealSmartMotionBlur creation in ProjectExporter, preventing Motion ND from rendering during export.",
+      "file_offset": "0x318F7D4",
+      "virtual_address": "0x1831901D4",
+      "original_hex": "0F84A4010000",
+      "patched_hex": "E9A501000090",
+      "instructions_original": "je 0x18319037e",
+      "instructions_patched": "jmp 0x18319037e; nop"
+    },
+    {
+      "target": "studio_worker.dll",
+      "name": "Motion ND Export Bypass (FilterDispatcher)",
+      "description": "Bypasses RealSmartMotionBlur filter instantiation in the export filter graph dispatcher.",
+      "file_offset": "0x31C5B13",
+      "virtual_address": "0x1831C6513",
+      "original_hex": "488B8288000000",
+      "patched_hex": "E92CFFFFFF9090",
+      "instructions_original": "mov rax, qword ptr [rdx+0x88]",
+      "instructions_patched": "jmp 0x1831c6444; nop; nop"
+    },
+    {
       "target": "Insta360 Studio.exe",
       "name": "Universal LUT Engine Support",
       "description": "Forces supportLut getter to return true (1), enabling the LUT rendering pipeline for all footage (Single Lens, 360, Flat, Non-Log).",

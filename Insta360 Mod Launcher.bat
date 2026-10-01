@@ -28,6 +28,13 @@ set "PS_CODE=%errorlevel%"
 if "%PS_CODE%"=="10" set "DENOISE_STATUS=[ ON - 2.4x Fast Export Active ]"
 if "%PS_CODE%"=="11" set "DENOISE_STATUS=[ OFF - Stock Denoise Active ]"
 
+:: Detect Motion ND Export Bypass Status in studio_worker.dll
+set "MOTION_ND_STATUS=[ UNKNOWN ]"
+powershell -NoProfile -Command "$stream=[System.IO.File]::OpenRead('C:\Program Files\Insta360 Studio\studio_worker.dll'); $stream.Seek(0x318F7D4,0)|Out-Null; $b=New-Object byte[] 6; $stream.Read($b,0,6)|Out-Null; $stream.Close(); $h=[BitConverter]::ToString($b) -replace '-',''; if($h -eq 'E9A501000090'){exit 30} elseif($h -eq '0F84A4010000'){exit 31} else{exit 32}" >nul 2>&1
+set "MND_CODE=%errorlevel%"
+if "%MND_CODE%"=="30" set "MOTION_ND_STATUS=[ BYPASSED - Motion Blur Disabled in Export ]"
+if "%MND_CODE%"=="31" set "MOTION_ND_STATUS=[ STOCK - Motion Blur Enabled in Export ]"
+
 :: Detect In-App LUT UI & EXE Patch Status
 set "EXE_STATUS=[ UNKNOWN ]"
 powershell -NoProfile -Command "$stream=[System.IO.File]::OpenRead('C:\Program Files\Insta360 Studio\Insta360 Studio.exe'); $stream.Seek(0x3011930,0)|Out-Null; $b=New-Object byte[] 5; $stream.Read($b,0,5)|Out-Null; $stream.Close(); $h=[BitConverter]::ToString($b) -replace '-',''; if($h -eq 'B001C39090'){exit 20} else{exit 21}" >nul 2>&1
@@ -39,9 +46,10 @@ echo   -- STATUS DASHBOARD ----------------------------------------------
 echo      LUT Server Status   : %SERVER_STATUS%
 echo      LUT Library Rescan  : [ !LUT_COUNT! .cube LUTs loaded from Custom_LUTs ]
 echo      Fast Export Mod     : %DENOISE_STATUS%
+echo      Motion ND Export    : %MOTION_ND_STATUS%
 echo      Studio EXE Patches  : %EXE_STATUS%
 echo      Default LUT State   : [ OFF by default / Stock Rec.709 fallback ]
-echo      Motion ND Default   : [ OFF by default / Clean UI toggle export ]
+echo      Motion ND Default   : [ OFF by default on clip load ]
 echo   ------------------------------------------------------------------
 echo.
 echo   ==================================================================

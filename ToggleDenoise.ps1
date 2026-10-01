@@ -85,13 +85,14 @@ function Get-MotionNdExportStatus {
     if (-not (Test-Path $Path)) { return "NOT FOUND" }
     try {
         $stream = [System.IO.File]::OpenRead($Path)
-        $stream.Seek(0x31E2352, [System.IO.SeekOrigin]::Begin) | Out-Null
-        $buf = New-Object byte[] 7
-        $stream.Read($buf, 0, 7) | Out-Null
+        $stream.Seek(0x318F7D4, [System.IO.SeekOrigin]::Begin) | Out-Null
+        $buf = New-Object byte[] 6
+        $stream.Read($buf, 0, 6) | Out-Null
         $stream.Close()
         $hex = [System.BitConverter]::ToString($buf) -replace '-', ''
-        if ($hex -eq "4438B6A3000000") { return "CLEAN (UI Motion ND toggle controls export)" }
-        return "FORCED_ON ($hex)"
+        if ($hex -eq "E9A501000090") { return "OFF (Bypassed - No Motion Blur in Export)" }
+        if ($hex -eq "0F84A4010000") { return "STOCK (Motion Blur Render Enabled)" }
+        return "CUSTOM ($hex)"
     } catch {
         return "ERROR: $_"
     }
