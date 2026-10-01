@@ -3,6 +3,15 @@ setlocal enabledelayedexpansion
 title Insta360 Studio Mod Launcher ^& Control Panel
 cd /d "%~dp0"
 
+:: Check for Administrative privileges and elevate if needed
+net session >nul 2>&1
+if %errorlevel% neq 0 (
+    echo [*] Administrative privileges required to manage files in Program Files.
+    echo [*] Requesting UAC elevation...
+    powershell -NoProfile -Command "Start-Process cmd.exe -ArgumentList '/c \"\"%~f0\"\"' -Verb RunAs"
+    exit /b
+)
+
 :MENU
 cls
 echo ========================================================================
@@ -10,44 +19,28 @@ echo              INSTA360 STUDIO MOD LAUNCHER ^& CONTROL PANEL
 echo ========================================================================
 echo.
 
-:: Detect LUT Background Server Status
-set "SERVER_STATUS=[ STOPPED ]"
-curl.exe -s --max-time 1 http://127.0.0.1:8999/ping | findstr "ok" >nul 2>&1
-if !errorlevel! equ 0 (
-    set "SERVER_STATUS=[ ACTIVE - Port 8999 ]"
+:: Query Mod Status using Dynamic Signature Patcher
+set "LUT_STATUS=[ ... ]"
+set "MND_STATUS=[ ... ]"
+set "DENOISE_STATUS=[ ... ]"
+set "SERVER_STATUS=[ ... ]"
+for /f "tokens=1,* delims=:" %%A in ('python "%~dp0dynamic_patcher.py" --status 2^>nul') do (
+    if "%%A"=="LUT" set "LUT_STATUS=[ %%B ]"
+    if "%%A"=="MND" set "MND_STATUS=[ %%B ]"
+    if "%%A"=="Denoise" set "DENOISE_STATUS=[ %%B ]"
+    if "%%A"=="Server" set "SERVER_STATUS=[ %%B ]"
 )
 
 :: Dynamic Rescan of Custom_LUTs folder
 set "LUT_COUNT=0"
 for /f %%A in ('powershell -NoProfile -Command "(Get-ChildItem -Path '%~dp0Custom_LUTs' -Filter '*.cube' -File -ErrorAction SilentlyContinue).Count"') do set "LUT_COUNT=%%A"
 
-:: Detect Denoise Bypass Mod Status in studio_worker.dll
-set "DENOISE_STATUS=[ UNKNOWN ]"
-powershell -NoProfile -Command "$stream=[System.IO.File]::OpenRead('C:\Program Files\Insta360 Studio\studio_worker.dll'); $stream.Seek(0x31CEC0E,0)|Out-Null; $b=New-Object byte[] 5; $stream.Read($b,0,5)|Out-Null; $stream.Close(); $h=[BitConverter]::ToString($b) -replace '-',''; if($h -eq 'E83DFB8903'){exit 10} else{exit 11}" >nul 2>&1
-set "PS_CODE=%errorlevel%"
-if "%PS_CODE%"=="10" set "DENOISE_STATUS=[ IN-APP EXPORT TOGGLE - Default OFF / Grain Preserved ]"
-if "%PS_CODE%"=="11" set "DENOISE_STATUS=[ STOCK - Multi-Frame Denoise Always On ]"
-
-:: Detect Motion ND Export Bypass Status in studio_worker.dll
-set "MOTION_ND_STATUS=[ UNKNOWN ]"
-powershell -NoProfile -Command "$stream=[System.IO.File]::OpenRead('C:\Program Files\Insta360 Studio\studio_worker.dll'); $stream.Seek(0x318F7D4,0)|Out-Null; $b=New-Object byte[] 6; $stream.Read($b,0,6)|Out-Null; $stream.Close(); $h=[BitConverter]::ToString($b) -replace '-',''; if($h -eq 'E9A501000090'){exit 30} elseif($h -eq '0F84A4010000'){exit 31} else{exit 32}" >nul 2>&1
-set "MND_CODE=%errorlevel%"
-if "%MND_CODE%"=="30" set "MOTION_ND_STATUS=[ BYPASSED - Motion Blur Disabled in Export ]"
-if "%MND_CODE%"=="31" set "MOTION_ND_STATUS=[ STOCK - Motion Blur Enabled in Export ]"
-
-:: Detect In-App LUT UI & EXE Patch Status
-set "EXE_STATUS=[ UNKNOWN ]"
-powershell -NoProfile -Command "$stream=[System.IO.File]::OpenRead('C:\Program Files\Insta360 Studio\Insta360 Studio.exe'); $stream.Seek(0x3011930,0)|Out-Null; $b=New-Object byte[] 5; $stream.Read($b,0,5)|Out-Null; $stream.Close(); $h=[BitConverter]::ToString($b) -replace '-',''; if($h -eq 'B001C39090'){exit 20} else{exit 21}" >nul 2>&1
-set "EXE_CODE=%errorlevel%"
-if "%EXE_CODE%"=="20" set "EXE_STATUS=[ INSTALLED - In-App UI + Sliders Unlocked ]"
-if "%EXE_CODE%"=="21" set "EXE_STATUS=[ STOCK - Original Unmodified EXE ]"
-
 echo   -- STATUS DASHBOARD ----------------------------------------------
 echo      LUT Server Status   : %SERVER_STATUS%
 echo      LUT Library Rescan  : [ !LUT_COUNT! .cube LUTs loaded from Custom_LUTs ]
 echo      Noise Reduction Mod : %DENOISE_STATUS%
-echo      Motion ND Export    : %MOTION_ND_STATUS%
-echo      Studio EXE Patches  : %EXE_STATUS%
+echo      Motion ND Export    : %MND_STATUS%
+echo      Studio EXE Patches  : %LUT_STATUS%
 echo      Default LUT State   : [ OFF by default / Stock Rec.709 fallback ]
 echo      Motion ND Default   : [ OFF by default on clip load ]
 echo   ------------------------------------------------------------------
@@ -100,6 +93,9 @@ goto MENU
 echo.
 echo [*] Launching Dynamic Signature Patcher...
 python "%~dp0dynamic_patcher.py"
+echo.
+echo [*] Patcher session completed.
+pause
 goto MENU
 
 :: ---------------------------------------------------------------------
@@ -119,15 +115,13 @@ if !errorlevel! neq 0 (
 echo [*] Setting safe stock fallback LUT...
 curl.exe -s --max-time 1 http://127.0.0.1:8999/reset >nul 2>&1
 
-:: Ensure modded files are deployed
-if "%PS_CODE%" neq "10" (
-    echo [*] Deploying modded studio_worker DLL (2.4x Fast Export)...
-    copy /y "%~dp0studio_worker_nodenoise.dll" "C:\Program Files\Insta360 Studio\studio_worker.dll" >nul 2>&1
+:: Ensure modded state is applied dynamically
+echo %LUT_STATUS% | findstr /i "PATCHED" >nul
+if !errorlevel! neq 0 (
+    echo [*] Applying Dynamic Patches to current Studio installation...
+    python "%~dp0dynamic_patcher.py" --all
 )
-if "%EXE_CODE%" neq "20" (
-    echo [*] Deploying modded Studio EXE (Universal LUT + Motion ND Off)...
-    copy /y "%~dp0Insta360 Studio_lutmod.exe" "C:\Program Files\Insta360 Studio\Insta360 Studio.exe" >nul 2>&1
-)
+
 copy /y "%~dp0L.qml" "C:\Users\Public\L.qml" >nul 2>&1
 
 echo [*] Launching Insta360 Studio (Full Mods)...
@@ -149,24 +143,16 @@ goto MENU
 :: ---------------------------------------------------------------------
 :TOGGLE_DENOISE
 echo.
-echo [*] Toggling 2.4x Fast Export Denoise Bypass...
-powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0ToggleDenoise.ps1"
+echo [*] Toggling 2.4x Fast Export Denoise Bypass dynamically...
+python "%~dp0dynamic_patcher.py" --denoise
+pause
 goto MENU
 
 :TOGGLE_EXE_PATCH
 echo.
-if "%EXE_CODE%"=="20" (
-    echo [*] Removing Studio EXE patches (Restoring stock EXE)...
-    taskkill /F /IM "Insta360 Studio.exe" >nul 2>&1
-    copy /y "%~dp0Insta360 Studio_stock.exe" "C:\Program Files\Insta360 Studio\Insta360 Studio.exe" >nul
-    echo [OK] Stock Studio EXE restored.
-) else (
-    echo [*] Applying Studio EXE patches (In-App UI + Unlocked Sliders)...
-    taskkill /F /IM "Insta360 Studio.exe" >nul 2>&1
-    copy /y "%~dp0Insta360 Studio_lutmod.exe" "C:\Program Files\Insta360 Studio\Insta360 Studio.exe" >nul
-    copy /y "%~dp0L.qml" "C:\Users\Public\L.qml" >nul
-    echo [OK] Studio EXE patches applied!
-)
+echo [*] Toggling Studio EXE patches dynamically...
+python "%~dp0dynamic_patcher.py" --lut
+copy /y "%~dp0L.qml" "C:\Users\Public\L.qml" >nul 2>&1
 pause
 goto MENU
 
@@ -216,11 +202,8 @@ taskkill /F /IM "studio-exporter.exe" >nul 2>&1
 echo [*] Stopping LUT Background Server...
 powershell -NoProfile -Command "Get-CimInstance Win32_Process | Where-Object { `$_.CommandLine -like '*lut_service.py*' } | ForEach-Object { Stop-Process -Id `$_.ProcessId -Force }" >nul 2>&1
 
-echo [*] Restoring factory stock Insta360 Studio.exe...
-copy /y "%~dp0Insta360 Studio_stock.exe" "C:\Program Files\Insta360 Studio\Insta360 Studio.exe" >nul
-
-echo [*] Restoring factory stock studio_worker.dll...
-copy /y "%~dp0studio_worker_stock.dll" "C:\Program Files\Insta360 Studio\studio_worker.dll" >nul
+echo [*] Restoring factory stock binaries from backup via Dynamic Patcher...
+python "%~dp0dynamic_patcher.py" --restore
 
 echo [*] Restoring factory stock LUTs...
 copy /y "%~dp0Custom_LUTs\00_Stock_Rec709.cube" "C:\Program Files\Insta360 Studio\data\i_log\X5_I-Log_To_Rec.709_V1.0.cube" >nul

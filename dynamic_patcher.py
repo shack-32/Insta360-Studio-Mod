@@ -21,6 +21,7 @@ import zlib
 import struct
 import shutil
 import subprocess
+import traceback
 import urllib.request
 import urllib.parse
 import json
@@ -34,8 +35,34 @@ PUBLIC_L_QML = r"C:\Users\Public\L.qml"
 PUBLIC_DENOISE_FLAG = r"C:\Users\Public\denoise.flag"
 
 # ==============================================================================
+# Windows UAC Auto-Elevation
+# ==============================================================================
+def check_and_elevate():
+    if os.name == 'nt':
+        import ctypes
+        try:
+            if not ctypes.windll.shell32.IsUserAnAdmin():
+                print("[*] Requesting Administrator privileges to patch Program Files...")
+                script = os.path.abspath(sys.argv[0])
+                params = ' '.join(f'"{arg}"' for arg in sys.argv[1:])
+                ret = ctypes.windll.shell32.ShellExecuteW(None, "runas", sys.executable, f'"{script}" {params}', None, 1)
+                sys.exit(0)
+        except Exception as e:
+            print(f"[!] UAC Elevation note: {e}")
+
+# ==============================================================================
 # PE Parsing & Helper Functions
 # ==============================================================================
+def ensure_studio_closed():
+    try:
+        out = subprocess.check_output('tasklist /FI "IMAGENAME eq Insta360 Studio.exe" /NH', shell=True).decode()
+        if "Insta360 Studio.exe" in out:
+            print("[*] Closing running Insta360 Studio process before modifying files...")
+            subprocess.call('taskkill /F /IM "Insta360 Studio.exe"', shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            import time; time.sleep(1)
+    except Exception:
+        pass
+
 def get_pe_section(data, sec_name):
     pe_off = struct.unpack('<I', data[0x3C:0x40])[0]
     num_sections = struct.unpack('<H', data[pe_off+6:pe_off+8])[0]
@@ -61,12 +88,10 @@ def find_code_cave(data, min_size=100):
         return None, None
     raw_start = text_sec['raw_ptr']
     raw_end = raw_start + text_sec['raw_size']
-    # Scan backward from section end for null bytes
     end_idx = raw_end - 1
     while end_idx >= raw_start and data[end_idx] == 0:
         end_idx -= 1
     cave_start = end_idx + 1
-    # Align to 16 bytes forward
     if cave_start % 16 != 0:
         cave_start = (cave_start + 15) & ~15
     cave_size = raw_end - cave_start
@@ -95,7 +120,6 @@ def get_iat_entry(data, dll_name_match, func_name_match):
         if name_rva == 0: break
         dll_name = data[rva_to_off(name_rva):rva_to_off(name_rva)+64].split(b'\x00')[0].decode('latin1')
         if dll_name_match.lower() in dll_name.lower():
-            # Walk IAT entries
             idx = 0
             while True:
                 iat_pos = rva_to_off(iat_rva + idx*8)
@@ -136,7 +160,6 @@ class DynamicPatcher:
         try:
             with open(self.exe_path, "rb") as f:
                 data = f.read(0x4000000)
-            # Universal LUT patch: B0 01 C3
             p_patched = re.compile(rb'\x0F\xB6\x41\x1C\xC3.{5,40}\x38\x51\x1C.{2,10}\x88\x51\x1C.{10,50}\xB0\x01\xC3', re.DOTALL)
             if p_patched.search(data):
                 return "PATCHED (Universal 3D LUT + Sliders Unlocked)"
@@ -152,7 +175,6 @@ class DynamicPatcher:
         try:
             with open(self.dll_path, "rb") as f:
                 dll_data = f.read()
-            # Check FilterDispatcher patch
             if b'\xE9\x2C\xFF\xFF\xFF\x90\x90' in dll_data:
                 return "PATCHED (Export Bypass Active + Default OFF)"
             return "STOCK (Motion Blur Render Enabled)"
@@ -184,6 +206,7 @@ class DynamicPatcher:
     # Patch 1: Universal LUT Engine & In-App UI
     # --------------------------------------------------------------------------
     def patch_lut_engine(self, enable=True):
+        ensure_studio_closed()
         self.ensure_backups()
         with open(self.exe_path, "r+b") as f:
             data = f.read()
@@ -192,48 +215,52 @@ class DynamicPatcher:
             p_lut_stock = re.compile(rb'\x0F\xB6\x41\x1C\xC3.{5,40}\x38\x51\x1C.{2,10}\x88\x51\x1C.{10,50}\x0F\xB6\x41\x1D\xC3', re.DOTALL)
             p_lut_patched = re.compile(rb'\x0F\xB6\x41\x1C\xC3.{5,40}\x38\x51\x1C.{2,10}\x88\x51\x1C.{10,50}\xB0\x01\xC3\x90\x90', re.DOTALL)
             p_target = p_lut_stock if enable else p_lut_patched
+            count = 0
             for m in p_target.finditer(data):
-                # Target the 5 bytes at the end of the match: 0F B6 41 1D C3 <-> B0 01 C3 90 90
                 off = m.end() - 5
                 f.seek(off)
                 f.write(b"\xB0\x01\xC3\x90\x90" if enable else b"\x0F\xB6\x41\x1D\xC3")
+                count += 1
+            print(f" -> supportLut getters updated: {count} match(es)")
 
             # 2. filtersModifiable getters in MediaProcessModel and MediaProcessViewModel
             p_fm_stock = re.compile(rb'\x0F\xB6\x41\x19\xC3.{5,40}\x38\x51\x19.{2,10}\x88\x51\x19.{10,50}\x0F\xB6\x41\x1A\xC3', re.DOTALL)
             p_fm_patched = re.compile(rb'\x0F\xB6\x41\x19\xC3.{5,40}\x38\x51\x19.{2,10}\x88\x51\x19.{10,50}\xB0\x01\xC3\x90\x90', re.DOTALL)
             p_target_fm = p_fm_stock if enable else p_fm_patched
+            count_fm = 0
             for m in p_target_fm.finditer(data):
                 off = m.end() - 5
                 f.seek(off)
                 f.write(b"\xB0\x01\xC3\x90\x90" if enable else b"\x0F\xB6\x41\x1A\xC3")
+                count_fm += 1
+            print(f" -> filtersModifiable getters updated: {count_fm} match(es)")
 
-            # 3. filtersModifiable function at 0x35A3440
-            p_func_stock = re.compile(rb'\x40\x53\x48\x83\xEC\x20\x48\x8B\xD9\x48\x8B\x09\x48\x85\xC9\x74\x15\xE8')
-            p_func_patched = re.compile(rb'\xB0\x01\xC3\x90\x90\x90\x48\x8B\xD9\x48\x8B\x09\x48\x85\xC9\x74\x15\xE8')
-            m_func = (p_func_stock if enable else p_func_patched).search(data)
-            if m_func:
-                f.seek(m_func.start())
-                f.write(b"\xB0\x01\xC3\x90\x90\x90" if enable else b"\x40\x53\x48\x83\xEC\x20")
-
-            # 4. Adjustment reset callback hook at 0x35A3480
+            # 3. filtersModifiable function and reset callback
             p_res_stock = re.compile(rb'\x40\x53\x48\x83\xEC\x20\x48\x8B\xD9\x48\x8B\x09\x48\x85\xC9\x74\x56\xE8')
             p_res_patched = re.compile(rb'\xC3\x90\x90\x90\x90\x90\x48\x8B\xD9\x48\x8B\x09\x48\x85\xC9\x74\x56\xE8')
             m_res = (p_res_stock if enable else p_res_patched).search(data)
             if m_res:
+                # Reset hook
                 f.seek(m_res.start())
                 f.write(b"\xC3\x90\x90\x90\x90\x90" if enable else b"\x40\x53\x48\x83\xEC\x20")
+                # filtersModifiable function sits 0x40 bytes before reset hook
+                func_off = m_res.start() - 0x40
+                f.seek(func_off)
+                f.write(b"\xB0\x01\xC3\x90\x90\x90" if enable else b"\x40\x53\x48\x83\xEC\x20")
+                print(" -> filtersModifiable function & reset callback updated")
 
-            # 5. Default LUT Off on Clip Load
+            # 4. Default LUT Off on Clip Load
             p_dlut_stock = re.compile(rb'\x4C\x8B\x82\x30\x01\x00\x00\x48\x8D\x54\x24\x20\x48\x8B\xC8\x41\xFF\xD0\x0F\xB6\xD0\x48\x8B\xCB')
             p_dlut_patched = re.compile(rb'\x4C\x8B\x82\x30\x01\x00\x00\x48\x8D\x54\x24\x20\x48\x8B\xC8\x41\xFF\xD0\x31\xD2\x90\x48\x8B\xCB')
             m_dlut = (p_dlut_stock if enable else p_dlut_patched).search(data)
             if m_dlut:
                 f.seek(m_dlut.start() + 18)
                 f.write(b"\x31\xD2\x90" if enable else b"\x0F\xB6\xD0")
+                print(" -> Default LUT Off on Clip Load updated")
 
-            # 6. LutView.qml UI injection
+            # 5. LutView.qml UI injection
             if enable:
-                idx_lutview = data.find(b'title: TS.insTr("restore.lut")')
+                idx_lutview = data.find(b'restore.lut')
                 if idx_lutview != -1:
                     start = data.rfind(b'import QtQuick', 0, idx_lutview)
                     new_qml = (
@@ -246,7 +273,7 @@ class DynamicPatcher:
                     )
                     f.seek(start)
                     f.write(new_qml)
-                # Copy L.qml to C:\Users\Public\L.qml
+                    print(f" -> In-App Look Selector injected into LutView.qml at 0x{start:X}")
                 if os.path.exists(L_QML_FILE):
                     shutil.copy2(L_QML_FILE, PUBLIC_L_QML)
 
@@ -256,6 +283,7 @@ class DynamicPatcher:
     # Patch 2: Motion ND Fix & Export Bypass
     # --------------------------------------------------------------------------
     def patch_motion_nd(self, enable=True):
+        ensure_studio_closed()
         self.ensure_backups()
         # 1. Patch EXE Loaders (Default OFF on media load)
         with open(self.exe_path, "r+b") as f:
@@ -268,6 +296,7 @@ class DynamicPatcher:
             if m:
                 f.seek(m.start() + len(m.group(1)))
                 f.write(b"\x31\xD2" if enable else b"\xB2\x01")
+                print(" -> Motion ND Loader 1 updated")
 
             # Loader 2
             p_mnd2_s = re.compile(rb'(\x0F\xB6\xD0\x48\x8B.{2,15})\x0F\xB6\xD3(\x48\x8B)', re.DOTALL)
@@ -276,6 +305,7 @@ class DynamicPatcher:
             if m:
                 f.seek(m.start() + len(m.group(1)))
                 f.write(b"\x31\xD2\x90" if enable else b"\x0F\xB6\xD3")
+                print(" -> Motion ND Loader 2 updated")
 
             # Loader 3
             p_mnd3_s = re.compile(rb'(\x75\x04\x33\xD2\xEB\x07\x45\x84\xE4\x74.{1})\xB2\x01(\x48\x8B\xCF)', re.DOTALL)
@@ -284,42 +314,11 @@ class DynamicPatcher:
             if m:
                 f.seek(m.start() + len(m.group(1)))
                 f.write(b"\x31\xD2" if enable else b"\xB2\x01")
-
-            # Loader 4
-            p_mnd4_s = re.compile(rb'(\x75\x0D)\x40\x0F\xB6\xD7(\x49\x8B\x0C\x24)', re.DOTALL)
-            p_mnd4_p = re.compile(rb'(\x75\x0D)\x31\xD2\x90\x90(\x49\x8B\x0C\x24)', re.DOTALL)
-            m = (p_mnd4_s if enable else p_mnd4_p).search(exe_data)
-            if m:
-                f.seek(m.start() + len(m.group(1)))
-                f.write(b"\x31\xD2\x90\x90" if enable else b"\x40\x0F\xB6\xD7")
-
-            # Loader 5
-            p_mnd5_s = re.compile(rb'(\x74\x0C)\x0F\xB6\xD3(\x49\x8B\x0C\x24)', re.DOTALL)
-            p_mnd5_p = re.compile(rb'(\x74\x0C)\x31\xD2\x90(\x49\x8B\x0C\x24)', re.DOTALL)
-            m = (p_mnd5_s if enable else p_mnd5_p).search(exe_data)
-            if m:
-                f.seek(m.start() + len(m.group(1)))
-                f.write(b"\x31\xD2\x90" if enable else b"\x0F\xB6\xD3")
+                print(" -> Motion ND Loader 3 updated")
 
         # 2. Patch studio_worker.dll (Export bypass)
         with open(self.dll_path, "r+b") as f:
             dll_data = f.read()
-
-            # ProjectExporter: 0F 84 rel32 -> E9 (rel32+1) 90
-            p_exp_s = re.compile(rb'(\x80\xBD.{5})\x0F\x84(.{4}\x4D\x8B\xC7\x48\x8D\x55.{1}\x48\x8B\xCF\xE8)', re.DOTALL)
-            p_exp_p = re.compile(rb'(\x80\xBD.{5})\xE9(.{4}\x90\x4D\x8B\xC7\x48\x8D\x55.{1}\x48\x8B\xCF\xE8)', re.DOTALL)
-            m = (p_exp_s if enable else p_exp_p).search(dll_data)
-            if m:
-                f.seek(m.start() + len(m.group(1)))
-                if enable:
-                    # Calculate new relative jump displacement
-                    rel32 = struct.unpack('<i', dll_data[m.start()+len(m.group(1))+2 : m.start()+len(m.group(1))+6])[0]
-                    new_rel = rel32 + 1
-                    f.write(b"\xE9" + struct.pack('<i', new_rel) + b"\x90")
-                else:
-                    rel32 = struct.unpack('<i', dll_data[m.start()+len(m.group(1))+1 : m.start()+len(m.group(1))+5])[0]
-                    orig_rel = rel32 - 1
-                    f.write(b"\x0F\x84" + struct.pack('<i', orig_rel))
 
             # FilterDispatcher: 48 8B 82 88 00 00 00 -> E9 2C FF FF FF 90 90
             p_disp_s = re.compile(rb'\x48\x8B\x82\x88\x00\x00\x00\x48\x8D\x3D.{4}\x48\x85\xC0\x48\x0F\x45\xF8')
@@ -328,6 +327,7 @@ class DynamicPatcher:
             if m:
                 f.seek(m.start())
                 f.write(b"\xE9\x2C\xFF\xFF\xFF\x90\x90" if enable else b"\x48\x8B\x82\x88\x00\x00\x00")
+                print(f" -> Motion ND FilterDispatcher export bypass updated at 0x{m.start():X}")
 
         print("[OK] Motion ND Fix & Export Bypass successfully updated!")
 
@@ -335,20 +335,17 @@ class DynamicPatcher:
     # Patch 3: Export Dialog Noise Reduction Toggle (2.4x Speedup)
     # --------------------------------------------------------------------------
     def patch_denoise_toggle(self, enable=True):
+        ensure_studio_closed()
         self.ensure_backups()
+
         # 1. Update studio_worker.dll dynamic hook
         with open(self.dll_path, "r+b") as f:
             dll_data = f.read()
             text_sec = get_pe_section(dll_data, '.text')
             img_base = 0x180000000
 
-            # Find Denoise Call Site in FilterDispatcher
-            p_call_s = re.compile(rb'(\x8B\xD3\x48\x8B\xCE)\xE8(.{4})(\x84\xC0\x0F\x84.{4}\x44\x8B\xC3)', re.DOTALL)
-            m = p_call_s.search(dll_data)
-            if not m:
-                # Check if already patched
-                p_call_p = re.compile(rb'(\x8B\xD3\x48\x8B\xCE)\xE8(.{4})(\x84\xC0\x0F\x84.{4}\x44\x8B\xC3)', re.DOTALL)
-                m = p_call_p.search(dll_data)
+            p_call = re.compile(rb'(\x8B\xD3\x48\x8B\xCE)\xE8(.{4})(\x84\xC0\x0F\x84.{4}\x44\x8B\xC3)', re.DOTALL)
+            m = p_call.search(dll_data)
 
             if m:
                 call_site_off = m.start() + len(m.group(1))
@@ -356,18 +353,16 @@ class DynamicPatcher:
 
                 cave_off, cave_va = find_code_cave(dll_data, 80)
                 iat_rva = get_iat_entry(dll_data, 'kernel32', 'GetFileAttributesA')
-                iat_va = img_base + iat_rva
+                iat_va = img_base + iat_rva if iat_rva else None
 
-                if enable and cave_off and iat_rva:
-                    # Get original target function VA from stock call or known VA
+                if enable and cave_off and iat_va:
                     orig_rel = struct.unpack('<i', m.group(2))[0]
-                    # If currently pointing to cave, read target from cave jmp
+                    # If already pointing to cave, read stock VA
                     if b'C:\\Users\\Public\\denoise.flag' in dll_data[cave_off:cave_off+100]:
-                        func_va = 0x1831CF130 # default
+                        func_va = call_site_va - 0x4DE # standard delta
                     else:
                         func_va = call_site_va + 5 + orig_rel
 
-                    # Build cave code
                     flag_va = cave_va + 0x28
                     disp_flag = flag_va - (cave_va + 0x0B)
                     disp_iat = iat_va - (cave_va + 0x11)
@@ -375,24 +370,22 @@ class DynamicPatcher:
                     disp_je = 0x24 - (0x18 + 2)
 
                     cave_code = bytearray()
-                    cave_code += bytes([0x48, 0x83, 0xEC, 0x28])                     # 0x00: sub rsp, 0x28
-                    cave_code += bytes([0x48, 0x8D, 0x0D]) + struct.pack('<i', disp_flag) # 0x04: lea rcx, [rip+disp_flag]
-                    cave_code += bytes([0xFF, 0x15]) + struct.pack('<i', disp_iat)        # 0x0B: call [rip+disp_iat]
-                    cave_code += bytes([0x48, 0x83, 0xC4, 0x28])                     # 0x11: add rsp, 0x28
-                    cave_code += bytes([0x83, 0xF8, 0xFF])                           # 0x15: cmp eax, -1
-                    cave_code += bytes([0x74, disp_je])                              # 0x18: je 0x24
-                    cave_code += bytes([0x89, 0xDA])                                 # 0x1A: mov edx, ebx
-                    cave_code += bytes([0x48, 0x89, 0xF1])                           # 0x1C: mov rcx, rsi
-                    cave_code += bytes([0xE9]) + struct.pack('<i', disp_func)        # 0x1F: jmp func_va
-                    cave_code += bytes([0x31, 0xC0])                                 # 0x24: xor eax, eax
-                    cave_code += bytes([0xC3, 0x90])                                 # 0x26: ret; nop
-                    cave_code += b"C:\\Users\\Public\\denoise.flag\x00"              # 0x28: string
+                    cave_code += bytes([0x48, 0x83, 0xEC, 0x28])                     # sub rsp, 28h
+                    cave_code += bytes([0x48, 0x8D, 0x0D]) + struct.pack('<i', disp_flag) # lea rcx, flag
+                    cave_code += bytes([0xFF, 0x15]) + struct.pack('<i', disp_iat)        # call GetFileAttributesA
+                    cave_code += bytes([0x48, 0x83, 0xC4, 0x28])                     # add rsp, 28h
+                    cave_code += bytes([0x83, 0xF8, 0xFF])                           # cmp eax, -1
+                    cave_code += bytes([0x74, disp_je])                              # je denoise_off
+                    cave_code += bytes([0x89, 0xDA])                                 # mov edx, ebx
+                    cave_code += bytes([0x48, 0x89, 0xF1])                           # mov rcx, rsi
+                    cave_code += bytes([0xE9]) + struct.pack('<i', disp_func)        # jmp func_va
+                    cave_code += bytes([0x31, 0xC0])                                 # xor eax, eax
+                    cave_code += bytes([0xC3, 0x90])                                 # ret; nop
+                    cave_code += b"C:\\Users\\Public\\denoise.flag\x00"              # flag path
 
-                    # Write cave code
                     f.seek(cave_off)
                     f.write(cave_code)
 
-                    # Patch call site
                     disp_call = cave_va - (call_site_va + 5)
                     f.seek(call_site_off)
                     f.write(b"\xE8" + struct.pack('<i', disp_call))
@@ -401,42 +394,113 @@ class DynamicPatcher:
                     prologue_off = text_sec['raw_ptr'] + (func_va - img_base - text_sec['vaddr'])
                     f.seek(prologue_off)
                     f.write(b"\x48\x89\x5C\x24\x18\x55")
-                elif not enable and cave_off:
-                    # Restore stock call
-                    func_va = 0x1831CF130
-                    disp_call = func_va - (call_site_va + 5)
-                    f.seek(call_site_off)
-                    f.write(b"\xE8" + struct.pack('<i', disp_call))
-                    f.seek(cave_off)
-                    f.write(b"\x00" * 70)
+                    print(f" -> Dynamic denoise hook installed in .text cave at 0x{cave_off:X}")
 
-        # 2. Update SingleVideoExport.qml in EXE RCC
+        # 2. Update SingleVideoExport.qml inside EXE RCC dynamically
         with open(self.exe_path, "r+b") as f:
             exe_data = f.read()
-            rdata_sec = get_pe_section(exe_data, '.rdata')
-            if rdata_sec:
-                raw_start = rdata_sec['raw_ptr']
-                raw_end = raw_start + rdata_sec['raw_size']
-                rdata = exe_data[raw_start:raw_end]
 
-                for m in re.finditer(b'\x78[\x9c\x01\xda]', rdata):
-                    off = m.start()
-                    try:
-                        decomp = zlib.decompress(rdata[off:off+10000])
-                        if b'videoParamsGrid' in decomp and b'bitrateSlider' in decomp:
-                            qml_off = raw_start + off
-                            text = decomp.decode('utf-8', errors='ignore')
+            for m in re.finditer(b'\x78[\x9c\x01\xda]', exe_data):
+                off = m.start()
+                try:
+                    decomp = zlib.decompress(exe_data[off:off+10000])
+                    if b'videoParamsGrid' in decomp and b'bitrateSlider' in decomp:
+                        qml_off = off
+                        f.seek(qml_off - 8)
+                        comp_size_plus_4, uncomp_len = struct.unpack('>II', f.read(8))
+                        target_comp_size = comp_size_plus_4 - 4
+                        full_decomp = zlib.decompress(exe_data[qml_off:qml_off+target_comp_size])
+                        qml_text = full_decomp.decode('utf-8', errors='ignore').replace('\r\n', '\n')
 
-                            if enable and 'denoiseCheckBox' not in text:
-                                from build_patches import get_qml_payload
-                                uncomp_len, qml_payload = get_qml_payload()
-                                f.seek(qml_off - 4)
-                                f.write(struct.pack('>I', uncomp_len))
-                                f.seek(qml_off)
-                                f.write(qml_payload)
-                            break
-                    except Exception:
-                        pass
+                        if enable and 'denoiseCheckBox' not in qml_text:
+                            combo_idx = qml_text.find('id: encodeFormatCombox')
+                            if combo_idx != -1:
+                                lbl_idx = qml_text.rfind('InsLabel {', 0, combo_idx)
+                                line_start = qml_text.rfind('\n', 0, lbl_idx)
+                                if qml_text[line_start-15:line_start].strip().startswith('//'):
+                                    line_start = qml_text.rfind('\n', 0, line_start - 1)
+
+                                denoise_block = (
+                                    '\n                    // Row 7: Denoise Toggle\n'
+                                    '                    InsLabel {\n'
+                                    '                        Layout.row: 7\n'
+                                    '                        Layout.column: 0\n'
+                                    '                        Layout.preferredWidth: 80\n'
+                                    '                        Layout.maximumWidth: 80\n'
+                                    '                        Layout.alignment: Qt.AlignLeft | Qt.AlignVCenter\n'
+                                    '                        Layout.preferredHeight: itemHeight\n'
+                                    '                        horizontalAlignment: Text.AlignLeft\n'
+                                    '                        color: InsUI.colorStandardSubtext\n'
+                                    '                        text: "Denoise:"\n'
+                                    '                    }\n\n'
+                                    '                    Item {\n'
+                                    '                        Layout.row: 7\n'
+                                    '                        Layout.column: 1\n'
+                                    '                        Layout.fillWidth: true\n'
+                                    '                        Layout.preferredHeight: 30\n\n'
+                                    '                        RowLayout {\n'
+                                    '                            anchors.fill: parent\n'
+                                    '                            spacing: 8\n\n'
+                                    '                            InsMultiCheckBox {\n'
+                                    '                                id: denoiseCheckBox\n'
+                                    '                                checked: false\n'
+                                    '                                text: "Noise Reduction (Default OFF = Grain, 2.4x Speed)"\n'
+                                    '                                onToggled: {\n'
+                                    '                                    root.setDenoiseState(checked)\n'
+                                    '                                }\n'
+                                    '                            }\n'
+                                    '                        }\n'
+                                    '                    }\n'
+                                )
+                                mod = qml_text[:line_start] + denoise_block + qml_text[line_start:]
+                                mod = re.sub(r'(id:\s*encodeFormatCombox\s*\n\s*Layout\.row:\s*)7', r'\g<1>8', mod)
+                                mod = re.sub(r'(Layout\.row:\s*)7(\s*\n\s*Layout\.column:\s*0\s*\n[\s\S]*?id:\s*encodeFormatCombox)', r'\g<1>8\2', mod)
+
+                                methods = (
+                                    '\n    function checkDenoiseState() {\n'
+                                    '        var xhr = new XMLHttpRequest();\n'
+                                    '        xhr.open("GET", "http://127.0.0.1:8999/denoise", true);\n'
+                                    '        xhr.onreadystatechange = function() {\n'
+                                    '            if (xhr.readyState === XMLHttpRequest.DONE && xhr.status === 200) {\n'
+                                    '                try {\n'
+                                    '                    var resp = JSON.parse(xhr.responseText);\n'
+                                    '                    if (typeof resp.enabled !== "undefined") {\n'
+                                    '                        denoiseCheckBox.checked = !!resp.enabled;\n'
+                                    '                    }\n'
+                                    '                } catch(e) {}\n'
+                                    '            }\n'
+                                    '        };\n'
+                                    '        xhr.send();\n'
+                                    '    }\n\n'
+                                    '    function setDenoiseState(enabled) {\n'
+                                    '        var xhr = new XMLHttpRequest();\n'
+                                    '        xhr.open("GET", "http://127.0.0.1:8999/denoise?enabled=" + (enabled ? "1" : "0"), true);\n'
+                                    '        xhr.send();\n'
+                                    '    }\n'
+                                )
+                                root_idx = mod.find('Item {\n    id: root')
+                                insert_pos = mod.find('\n', root_idx + 20)
+                                mod = mod[:insert_pos] + methods + mod[insert_pos:]
+
+                                on_comp = mod.find('Component.onCompleted:')
+                                if on_comp != -1:
+                                    brace = mod.find('{', on_comp)
+                                    mod = mod[:brace+1] + '\n        Qt.callLater(root.checkDenoiseState);' + mod[brace+1:]
+
+                                clean = re.sub(r'// [^\n]*\n', '\n', mod)
+                                clean_bytes = clean.encode('utf-8')
+                                comp = zlib.compress(clean_bytes, 9)
+
+                                if len(comp) <= target_comp_size:
+                                    padded = comp + b'\x00' * (target_comp_size - len(comp))
+                                    f.seek(qml_off - 4)
+                                    f.write(struct.pack('>I', len(clean_bytes)))
+                                    f.seek(qml_off)
+                                    f.write(padded)
+                                    print(f" -> Injected Denoise toggle into SingleVideoExport.qml at 0x{qml_off:X} (headroom={target_comp_size - len(comp)} bytes)")
+                        break
+                except Exception:
+                    pass
 
         print("[OK] Export Dialog Noise Reduction Toggle successfully updated!")
 
@@ -456,7 +520,6 @@ class DynamicPatcher:
     def stop_service(self):
         print("[*] Stopping Background LUT Service...")
         try:
-            # Query PID on port 8999
             out = subprocess.check_output('powershell -Command "Get-NetTCPConnection -LocalPort 8999 -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess"', shell=True).decode()
             pids = [int(p.strip()) for p in out.splitlines() if p.strip().isdigit() and int(p.strip()) > 0]
             for pid in set(pids):
@@ -469,6 +532,7 @@ class DynamicPatcher:
     # Patch 5: Restore All Backups
     # --------------------------------------------------------------------------
     def restore_all(self):
+        ensure_studio_closed()
         print("[*] Restoring original backups...")
         if os.path.exists(self.exe_bak):
             shutil.copy2(self.exe_bak, self.exe_path)
@@ -492,6 +556,7 @@ def clear_screen():
     os.system('cls' if os.name == 'nt' else 'clear')
 
 def interactive_menu():
+    check_and_elevate()
     patcher = DynamicPatcher()
 
     while True:
@@ -520,64 +585,81 @@ def interactive_menu():
         print("     [0] Exit")
         print("========================================================================")
 
-        choice = input("\nSelect an option: ").strip().upper()
-
-        if choice == '0':
+        try:
+            choice = input("\nSelect an option: ").strip().upper()
+        except (KeyboardInterrupt, EOFError):
             break
-        elif choice == 'A':
-            print("\n[*] Applying all recommended mods...")
-            patcher.patch_lut_engine(True)
-            patcher.patch_motion_nd(True)
-            patcher.patch_denoise_toggle(True)
-            patcher.start_service()
-            input("\nPress Enter to continue...")
-        elif choice == 'L':
-            patcher.launch_app()
-            input("\nApp launched. Press Enter to continue...")
-        elif choice == 'R':
-            confirm = input("\nAre you sure you want to restore original factory files? (y/n): ")
-            if confirm.lower() == 'y':
-                patcher.restore_all()
-            input("\nPress Enter to continue...")
-        elif choice == '1':
-            curr = "PATCHED" in patcher.get_lut_status()
-            patcher.patch_lut_engine(not curr)
-            input("\nPress Enter to continue...")
-        elif choice == '2':
-            curr = "PATCHED" in patcher.get_motion_nd_status()
-            patcher.patch_motion_nd(not curr)
-            input("\nPress Enter to continue...")
-        elif choice == '3':
-            curr = "PATCHED" in patcher.get_denoise_status()
-            patcher.patch_denoise_toggle(not curr)
-            input("\nPress Enter to continue...")
-        elif choice == '4':
-            curr = "ACTIVE" in patcher.get_server_status()
-            if curr: patcher.stop_service()
-            else: patcher.start_service()
-            input("\nPress Enter to continue...")
+
+        try:
+            if choice == '0':
+                break
+            elif choice == 'A':
+                print("\n[*] Applying all recommended mods...")
+                patcher.patch_lut_engine(True)
+                patcher.patch_motion_nd(True)
+                patcher.patch_denoise_toggle(True)
+                patcher.start_service()
+                input("\n[SUCCESS] All mods successfully applied! Press Enter to continue...")
+            elif choice == 'L':
+                patcher.launch_app()
+                input("\nApp launched. Press Enter to continue...")
+            elif choice == 'R':
+                confirm = input("\nAre you sure you want to restore original factory files? (y/n): ")
+                if confirm.lower() == 'y':
+                    patcher.restore_all()
+                input("\nPress Enter to continue...")
+            elif choice == '1':
+                curr = "PATCHED" in patcher.get_lut_status()
+                patcher.patch_lut_engine(not curr)
+                input("\nPress Enter to continue...")
+            elif choice == '2':
+                curr = "PATCHED" in patcher.get_motion_nd_status()
+                patcher.patch_motion_nd(not curr)
+                input("\nPress Enter to continue...")
+            elif choice == '3':
+                curr = "PATCHED" in patcher.get_denoise_status()
+                patcher.patch_denoise_toggle(not curr)
+                input("\nPress Enter to continue...")
+            elif choice == '4':
+                curr = "ACTIVE" in patcher.get_server_status()
+                if curr: patcher.stop_service()
+                else: patcher.start_service()
+                input("\nPress Enter to continue...")
+        except Exception as e:
+            print("\n" + "="*60)
+            print("[!] An error occurred during patching:")
+            traceback.print_exc()
+            print("="*60)
+            input("\nPress Enter to return to menu...")
 
 if __name__ == "__main__":
     if len(sys.argv) > 1:
-        patcher = DynamicPatcher()
         arg = sys.argv[1].lower()
-        if arg in ("--all", "-a"):
-            patcher.patch_lut_engine(True)
-            patcher.patch_motion_nd(True)
-            patcher.patch_denoise_toggle(True)
-            patcher.start_service()
-        elif arg in ("--lut", "-l"):
-            patcher.patch_lut_engine(True)
-        elif arg in ("--mnd", "-m"):
-            patcher.patch_motion_nd(True)
-        elif arg in ("--denoise", "-d"):
-            patcher.patch_denoise_toggle(True)
-        elif arg in ("--restore", "-r"):
-            patcher.restore_all()
-        elif arg in ("--status", "-s"):
-            print("LUT:", patcher.get_lut_status())
-            print("MND:", patcher.get_motion_nd_status())
-            print("Denoise:", patcher.get_denoise_status())
-            print("Server:", patcher.get_server_status())
+        if arg not in ("--status", "-s"):
+            check_and_elevate()
+        patcher = DynamicPatcher()
+        try:
+            if arg in ("--all", "-a"):
+                patcher.patch_lut_engine(True)
+                patcher.patch_motion_nd(True)
+                patcher.patch_denoise_toggle(True)
+                patcher.start_service()
+            elif arg in ("--lut", "-l"):
+                patcher.patch_lut_engine(True)
+            elif arg in ("--mnd", "-m"):
+                patcher.patch_motion_nd(True)
+            elif arg in ("--denoise", "-d"):
+                patcher.patch_denoise_toggle(True)
+            elif arg in ("--restore", "-r"):
+                patcher.restore_all()
+            elif arg in ("--status", "-s"):
+                print("LUT:", patcher.get_lut_status())
+                print("MND:", patcher.get_motion_nd_status())
+                print("Denoise:", patcher.get_denoise_status())
+                print("Server:", patcher.get_server_status())
+        except Exception as e:
+            print("\n[!] Error:")
+            traceback.print_exc()
+            input("\nPress Enter to exit...")
     else:
         interactive_menu()
