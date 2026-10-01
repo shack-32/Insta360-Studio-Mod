@@ -76,12 +76,14 @@ echo   == SEGMENT 4: TOOLS ^& SHORTCUTS ==
 echo   ==================================================================
 echo     [8] Open Custom LUTs Folder (Add / Remove .cube files)
 echo     [9] Launch Standalone Floating LUT Picker Window
+echo     [P] Launch Dynamic Signature Patcher (Scan ^& Patch Any New Update)
 echo     [0] Exit
 echo   ==================================================================
 echo.
-set /p opt="Select an option [0-9] (Default 1): "
+set /p opt="Select an option [0-9, P] (Default 1): "
 if "%opt%"=="" set opt=1
 
+if /i "%opt%"=="P" goto LAUNCH_DYNAMIC_PATCHER
 if "%opt%"=="1" goto LAUNCH_FULL
 if "%opt%"=="2" goto LAUNCH_AS_IS
 if "%opt%"=="3" goto TOGGLE_DENOISE
@@ -92,6 +94,12 @@ if "%opt%"=="7" goto RESET_ALL
 if "%opt%"=="8" goto OPEN_LUTS
 if "%opt%"=="9" goto LAUNCH_PICKER
 if "%opt%"=="0" exit /b
+goto MENU
+
+:LAUNCH_DYNAMIC_PATCHER
+echo.
+echo [*] Launching Dynamic Signature Patcher...
+python "%~dp0dynamic_patcher.py"
 goto MENU
 
 :: ---------------------------------------------------------------------

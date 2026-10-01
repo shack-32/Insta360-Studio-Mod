@@ -80,12 +80,36 @@ The interactive launcher provides a live status dashboard and 4 clear segments:
   ==================================================================
     [8] Open Custom LUTs Folder (Add / Remove .cube files)
     [9] Launch Standalone Floating LUT Picker Window
+    [P] Launch Dynamic Signature Patcher (Scan & Patch Any New Update)
     [0] Exit
 ```
 
 - Choose **`1`** to run with full mods (auto-starts background service, deploys verified DLL/EXE mods, and opens Insta360 Studio).
 - Choose **`2`** to launch Studio as-is without changing any current mod states.
+- Choose **`P`** to launch the **Dynamic Signature Patcher** to automatically scan, pattern-match, and patch newly installed Insta360 Studio app updates with 1 click.
 - Choose **`7`** anytime for an instant, clean factory restore of all original unmodified binaries.
+
+---
+
+## ⚡ Dynamic Signature Patcher (`dynamic_patcher.py`)
+
+When Insta360 releases a new software update, file offsets shift. The **Dynamic Signature Patcher** eliminates hardcoded offsets by scanning for unique opcode arrays of bytes (AOB) and dynamic PE headers:
+
+1. **Automatic Backup**: Backs up stock executables to `.bak` automatically before modifying anything.
+2. **Dynamic AOB Scanning**:
+   - Locates `supportLut` and `filtersModifiable` across `MediaProcessModel` and `MediaProcessViewModel`.
+   - Locates all 5 clip loaders and patches default `enableMotionBlur` to 0.
+   - Locates `ProjectExporter` and `FilterDispatcher` motion blur calls in `studio_worker.dll` and bypasses them.
+   - Finds `.text` alignment caves and dynamic IAT entries to build the live `GetFileAttributesA` denoise hook.
+   - Locates embedded RCC QML resources dynamically and injects `SingleVideoExport.qml` and `LutView.qml`.
+3. **Usage**:
+   - Run from launcher with option **`[P]`**, or run in terminal:
+     ```bash
+     python dynamic_patcher.py            # Interactive Menu
+     python dynamic_patcher.py --all      # Patch All Mods (Non-interactive)
+     python dynamic_patcher.py --restore  # Restore Original Factory Binaries
+     python dynamic_patcher.py --status   # Check Live Patch Status
+     ```
 
 ---
 
