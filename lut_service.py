@@ -26,6 +26,71 @@ def log(msg):
     except Exception:
         pass
 
+def normalize_cube_content(content_str, fallback_title="Custom Look"):
+    raw_lines = content_str.splitlines()
+    title = fallback_title
+    size = None
+    data_lines = []
+
+    for line in raw_lines:
+        s = line.strip()
+        if not s or s.startswith('#'):
+            continue
+        if s.startswith('TITLE'):
+            t = s[5:].strip().strip('"\'')
+            if t:
+                title = t
+        elif s.startswith('LUT_3D_SIZE'):
+            parts = s.split()
+            if len(parts) >= 2 and parts[1].isdigit():
+                size = int(parts[1])
+        elif s.startswith('DOMAIN_') or s.startswith('LUT_1D_'):
+            continue
+        else:
+            parts = s.split()
+            if len(parts) >= 3:
+                try:
+                    r = float(parts[0])
+                    g = float(parts[1])
+                    b = float(parts[2])
+                    # Crucial: trailing space before CRLF prevents MSVC stream >> float from setting eofbit
+                    data_lines.append(f"{r:.6f} {g:.6f} {b:.6f} \r\n")
+                except ValueError:
+                    pass
+
+    if not size or len(data_lines) != size**3:
+        return None
+
+    out = [f'TITLE "{title}"\r\n', f'LUT_3D_SIZE {size}\r\n\r\n']
+    out.extend(data_lines)
+    return "".join(out).encode("latin1")
+
+def deploy_lut_to_studio(src_path):
+    try:
+        with open(src_path, "r", encoding="latin1") as f:
+            content = f.read()
+        fallback = os.path.splitext(os.path.basename(src_path))[0]
+        normalized = normalize_cube_content(content, fallback)
+        if not normalized:
+            # Safe fallback if input file corrupted
+            stock_path = os.path.join(CUSTOM_LUTS_DIR, "00_Stock_Rec709.cube")
+            with open(stock_path, "rb") as f:
+                normalized = f.read()
+
+        success = 0
+        for target in TARGET_LUTS:
+            dest = os.path.join(STUDIO_ILOG_DIR, target)
+            try:
+                with open(dest, "wb") as f:
+                    f.write(normalized)
+                success += 1
+            except Exception:
+                pass
+        return success
+    except Exception as e:
+        log(f"Error deploying LUT: {e}")
+        return 0
+
 def get_lut_files():
     if not os.path.exists(CUSTOM_LUTS_DIR):
         return []
@@ -76,15 +141,19 @@ KNOWN_LABELS = {
     "Interior.cube": "Interior Ambient",
     "HDR.cube": "HDR Punch",
     "Hyperlapse.cube": "Hyperlapse Vivid",
-    "Night.cube": "Night City Lights"
+    "Night.cube": "Night City Lights",
+    "rec709_natural_look_82.2G4A0029.cube": "Natural Rec709 Look",
+    "---_M.Fahri_-_AnalogFilmPack_-_100c_Negative.cube": "Analog 100c Negative",
+    "---_M.Fahri_-_AnalogFilmPack_-_400h.cube": "Analog Film 400h",
+    "---_M.Fahri_-_AnalogFilmPack_-_Portrait_400_Nc.cube": "Portrait 400 NC"
 }
 
 def format_lut_label(filename):
     if filename in KNOWN_LABELS:
         return KNOWN_LABELS[filename]
     name = os.path.splitext(filename)[0]
-    if name.startswith("00_"):
-        name = name[3:]
+    if name.startswith("00_") or name.startswith("---_"):
+        name = name.lstrip("-0_")
     name = re.sub(r'\(by Adobe\)', '', name, flags=re.IGNORECASE)
     name = re.sub(r'[\._\-]+', ' ', name)
     name = re.sub(r'\s+', ' ', name).strip()
@@ -98,15 +167,7 @@ def reset_to_stock():
     stock_path = os.path.join(CUSTOM_LUTS_DIR, "00_Stock_Rec709.cube")
     if not os.path.exists(stock_path):
         return False
-    success = 0
-    for target in TARGET_LUTS:
-        dest = os.path.join(STUDIO_ILOG_DIR, target)
-        try:
-            shutil.copyfile(stock_path, dest)
-            success += 1
-        except Exception:
-            pass
-    return success == len(TARGET_LUTS)
+    return deploy_lut_to_studio(stock_path) == len(TARGET_LUTS)
 
 def get_active_index(files):
     sample = os.path.join(STUDIO_ILOG_DIR, TARGET_LUTS[0])
@@ -192,14 +253,8 @@ class LutRequestHandler(BaseHTTPRequestHandler):
             if 0 <= idx < len(files):
                 selected = files[idx]
                 src = os.path.join(CUSTOM_LUTS_DIR, selected)
-                success_count = 0
-                for target_name in TARGET_LUTS:
-                    dest = os.path.join(STUDIO_ILOG_DIR, target_name)
-                    try:
-                        shutil.copyfile(src, dest)
-                        success_count += 1
-                    except Exception:
-                        pass
+                # Automatically normalizes formatting to prevent any engine crashes
+                success_count = deploy_lut_to_studio(src)
                 resp = json.dumps({
                     "status": "ok",
                     "active": selected,
