@@ -262,18 +262,25 @@ class DynamicPatcher:
             if enable:
                 idx_lutview = data.find(b'restore.lut')
                 if idx_lutview != -1:
-                    start = data.rfind(b'import QtQuick', 0, idx_lutview)
-                    new_qml = (
+                    p_drawer = data.rfind(b'InsDrawer', 0, idx_lutview)
+                    start = data.rfind(b'import QtQuick', 0, p_drawer) if p_drawer != -1 else data.rfind(b'import QtQuick', 0, idx_lutview)
+                    target_size = struct.unpack('>I', data[start-4:start])[0] if start >= 4 else 536
+                    # Verify target_size sanity (standard uncompressed LutView is ~536 bytes)
+                    if not (200 <= target_size <= 2000):
+                        target_size = 536
+                    new_qml_base = (
                         b'import QtQuick\nimport QtQuick.Layouts\nimport InsTS 1.0\nimport Common.ViewModel 1.0\n'
                         b'import "../../../../ins_control/common/container"\n'
                         b'InsDrawer{id:r;required property MediaProcessViewModel viewModel;title:TS.insTr("restore.lut");visible:true;checked:viewModel.enableLut\n'
                         b'Connections{target:r;function onSwitchClicked(c){viewModel.modifyLutEnable(c);viewModel.reportLutEnable(c)}}\n'
                         b'ColumnLayout{Layout.fillWidth:true\n'
-                        b'Loader{Layout.fillWidth:true;source:"file:///C:/Users/Public/L.qml";onLoaded:{if(item)item.viewModel=r.viewModel}}}}       '
+                        b'Loader{Layout.fillWidth:true;source:"file:///C:/Users/Public/L.qml";onLoaded:{if(item)item.viewModel=r.viewModel}}}}'
                     )
+                    pad_len = max(0, target_size - len(new_qml_base))
+                    new_qml = new_qml_base + (b' ' * pad_len)
                     f.seek(start)
-                    f.write(new_qml)
-                    print(f" -> In-App Look Selector injected into LutView.qml at 0x{start:X}")
+                    f.write(new_qml[:target_size])
+                    print(f" -> In-App Look Selector injected into LutView.qml at 0x{start:X} (exact size: {target_size})")
                 if os.path.exists(L_QML_FILE):
                     shutil.copy2(L_QML_FILE, PUBLIC_L_QML)
 
