@@ -1,7 +1,7 @@
 {
-  "version": "1.0",
+  "version": "1.1",
   "name": "Insta360 Studio Mod Suite",
-  "description": "2.4x Export Speedup (Denoise Bypass), Universal Custom LUT Support, Live LUT Switcher, and Unlocked Color Adjustments",
+  "description": "2.4x Export Speedup (Denoise Bypass), Universal Custom LUT Support, Live LUT Switcher, Unlocked Color Adjustments, and Default Motion ND Off",
   "patches": [
     {
       "target": "studio_worker.dll",
@@ -13,17 +13,6 @@
       "patched_hex": "31C0C3909090",
       "instructions_original": "mov [rsp+0x18], rbx; push rbp",
       "instructions_patched": "xor eax, eax; ret; nop; nop; nop"
-    },
-    {
-      "target": "studio_worker.dll",
-      "name": "Export LUT Forwarding",
-      "description": "Forwards UI enable_lut flag [rsi+0xa2] directly to the export render pipeline [rsi+0x1fc], ensuring custom LUT is baked into exported MP4/ProRes.",
-      "file_offset": "0x31E2352",
-      "virtual_address": "0x1831E2D52",
-      "original_hex": "8886FC0100008B868C010000",
-      "patched_hex": "8A86A20000008886FC010000",
-      "instructions_original": "mov [rsi+0x1fc], al; mov eax, [rsi+0x18c]",
-      "instructions_patched": "mov al, [rsi+0xa2]; mov [rsi+0x1fc], al"
     },
     {
       "target": "Insta360 Studio.exe",
@@ -45,6 +34,61 @@
       "original_hex": "0FB6D0",
       "patched_hex": "31D290",
       "instructions_original": "movzx edx, al",
+      "instructions_patched": "xor edx, edx; nop"
+    },
+    {
+      "target": "Insta360 Studio.exe",
+      "name": "Default Motion ND Off (Loader 1)",
+      "description": "Sets enableMotionBlur to false (0) on media loading, preventing Motion ND from being automatically turned on.",
+      "file_offset": "0x375087D",
+      "virtual_address": "0x14375127D",
+      "original_hex": "B201",
+      "patched_hex": "31D2",
+      "instructions_original": "mov dl, 1",
+      "instructions_patched": "xor edx, edx"
+    },
+    {
+      "target": "Insta360 Studio.exe",
+      "name": "Default Motion ND Off (Loader 2)",
+      "description": "Sets enableMotionBlur to false (0) on clip load in alternate loader.",
+      "file_offset": "0x379FB64",
+      "virtual_address": "0x1437A0564",
+      "original_hex": "0FB6D3",
+      "patched_hex": "31D290",
+      "instructions_original": "movzx edx, bl",
+      "instructions_patched": "xor edx, edx; nop"
+    },
+    {
+      "target": "Insta360 Studio.exe",
+      "name": "Default Motion ND Off (Loader 3)",
+      "description": "Sets enableMotionBlur to false (0) on clip load in secondary loader.",
+      "file_offset": "0x33FB74B",
+      "virtual_address": "0x1433FC14B",
+      "original_hex": "B201",
+      "patched_hex": "31D2",
+      "instructions_original": "mov dl, 1",
+      "instructions_patched": "xor edx, edx"
+    },
+    {
+      "target": "Insta360 Studio.exe",
+      "name": "Default Motion ND Off (Loader 4)",
+      "description": "Sets enableMotionBlur to false (0) on project / media open path A.",
+      "file_offset": "0x30262E2",
+      "virtual_address": "0x143026CE2",
+      "original_hex": "400FB6D7",
+      "patched_hex": "31D29090",
+      "instructions_original": "movzx edx, dil",
+      "instructions_patched": "xor edx, edx; nop; nop"
+    },
+    {
+      "target": "Insta360 Studio.exe",
+      "name": "Default Motion ND Off (Loader 5)",
+      "description": "Sets enableMotionBlur to false (0) on project / media open path B.",
+      "file_offset": "0x302633D",
+      "virtual_address": "0x143026D3D",
+      "original_hex": "0FB6D3",
+      "patched_hex": "31D290",
+      "instructions_original": "movzx edx, bl",
       "instructions_patched": "xor edx, edx; nop"
     },
     {

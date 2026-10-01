@@ -80,18 +80,18 @@ function Get-LutUiStatus {
     }
 }
 
-function Get-LutExportStatus {
+function Get-MotionNdExportStatus {
     param($Path)
     if (-not (Test-Path $Path)) { return "NOT FOUND" }
     try {
         $stream = [System.IO.File]::OpenRead($Path)
         $stream.Seek(0x31E2352, [System.IO.SeekOrigin]::Begin) | Out-Null
-        $buf = New-Object byte[] 12
-        $stream.Read($buf, 0, 12) | Out-Null
+        $buf = New-Object byte[] 7
+        $stream.Read($buf, 0, 7) | Out-Null
         $stream.Close()
         $hex = [System.BitConverter]::ToString($buf) -replace '-', ''
-        if ($hex -eq "8A86A20000008886FC010000") { return "UNLOCKED (Custom LUT Applies to Exports)" }
-        return "STOCK (Export Skips LUT on Standard/Flat Footage)"
+        if ($hex -eq "4438B6A3000000") { return "CLEAN (UI Motion ND toggle controls export)" }
+        return "FORCED_ON ($hex)"
     } catch {
         return "ERROR: $_"
     }
@@ -110,7 +110,7 @@ function Get-ActiveLutName {
 if ($StatusOnly) {
     Write-Host "Denoise: $(Get-DenoiseStatus -Path $TargetDll)"
     Write-Host "LUT UI:  $(Get-LutUiStatus -Path $TargetExe)"
-    Write-Host "LUT Export: $(Get-LutExportStatus -Path $TargetDll)"
+    Write-Host "Motion ND Export: $(Get-MotionNdExportStatus -Path $TargetDll)"
     Write-Host "Active LUT Title: $(Get-ActiveLutName)"
     return
 }
@@ -199,7 +199,7 @@ while ($true) {
 
     $dStatus = Get-DenoiseStatus -Path $TargetDll
     $lStatus = Get-LutUiStatus -Path $TargetExe
-    $eStatus = Get-LutExportStatus -Path $TargetDll
+    $eStatus = Get-MotionNdExportStatus -Path $TargetDll
     $lutName = Get-ActiveLutName
 
     Write-Host ""
@@ -210,8 +210,8 @@ while ($true) {
     Write-Host "    * LUT Toggle in Studio: " -NoNewline
     if ($lStatus -like "*UNLOCKED*") { Write-Host $lStatus -ForegroundColor Green } else { Write-Host $lStatus -ForegroundColor Yellow }
 
-    Write-Host "    * LUT Export Pipeline:  " -NoNewline
-    if ($eStatus -like "*UNLOCKED*") { Write-Host $eStatus -ForegroundColor Green } else { Write-Host $eStatus -ForegroundColor Yellow }
+    Write-Host "    * Motion ND Export:     " -NoNewline
+    if ($eStatus -like "*CLEAN*") { Write-Host $eStatus -ForegroundColor Green } else { Write-Host $eStatus -ForegroundColor Yellow }
 
     Write-Host "    * Current Active LUT:   " -NoNewline
     Write-Host "$lutName" -ForegroundColor Cyan

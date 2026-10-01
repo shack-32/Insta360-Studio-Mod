@@ -41,6 +41,7 @@ echo      LUT Library Rescan  : [ !LUT_COUNT! .cube LUTs loaded from Custom_LUTs
 echo      Fast Export Mod     : %DENOISE_STATUS%
 echo      Studio EXE Patches  : %EXE_STATUS%
 echo      Default LUT State   : [ OFF by default / Stock Rec.709 fallback ]
+echo      Motion ND Default   : [ OFF by default / Clean UI toggle export ]
 echo   ------------------------------------------------------------------
 echo.
 echo   ==================================================================
@@ -103,8 +104,12 @@ echo [*] Setting safe stock fallback LUT...
 curl.exe -s --max-time 1 http://127.0.0.1:8999/reset >nul 2>&1
 
 :: Ensure modded files are deployed
+if "%PS_CODE%" neq "10" (
+    echo [*] Deploying modded studio_worker DLL (2.4x Fast Export)...
+    copy /y "%~dp0studio_worker_nodenoise.dll" "C:\Program Files\Insta360 Studio\studio_worker.dll" >nul 2>&1
+)
 if "%EXE_CODE%" neq "20" (
-    echo [*] Deploying modded Studio EXE...
+    echo [*] Deploying modded Studio EXE (Universal LUT + Motion ND Off)...
     copy /y "%~dp0Insta360 Studio_lutmod.exe" "C:\Program Files\Insta360 Studio\Insta360 Studio.exe" >nul 2>&1
 )
 copy /y "%~dp0L.qml" "C:\Users\Public\L.qml" >nul 2>&1
