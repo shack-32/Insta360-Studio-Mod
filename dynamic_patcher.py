@@ -171,13 +171,14 @@ class DynamicPatcher:
             return f"ERROR ({e})"
 
     def get_motion_nd_status(self):
-        if not os.path.exists(self.dll_path): return "NOT FOUND"
+        if not os.path.exists(self.exe_path): return "NOT FOUND"
         try:
-            with open(self.dll_path, "rb") as f:
-                dll_data = f.read()
-            if b'\xE9\x2C\xFF\xFF\xFF\x90\x90' in dll_data:
-                return "PATCHED (Export Bypass Active + Default OFF)"
-            return "STOCK (Motion Blur Render Enabled)"
+            with open(self.exe_path, "rb") as f:
+                exe_data = f.read(0x4000000)
+            p_mnd1_p = re.compile(rb'(\x84\xDB\x74\x0D\x80\xBE.{2}\x00\x00\x00\x74\x04)\x31\xD2(\xEB\x02\x33\xD2)', re.DOTALL)
+            if p_mnd1_p.search(exe_data):
+                return "PATCHED (Default OFF on Media Load)"
+            return "STOCK (Default ON)"
         except Exception as e:
             return f"ERROR ({e})"
 
@@ -287,7 +288,7 @@ class DynamicPatcher:
         print("[OK] Universal Custom LUT Engine & In-App UI successfully updated!")
 
     # --------------------------------------------------------------------------
-    # Patch 2: Motion ND Fix & Export Bypass
+    # Patch 2: Motion ND Fix & Default OFF
     # --------------------------------------------------------------------------
     def patch_motion_nd(self, enable=True):
         ensure_studio_closed()
@@ -323,20 +324,17 @@ class DynamicPatcher:
                 f.write(b"\x31\xD2" if enable else b"\xB2\x01")
                 print(" -> Motion ND Loader 3 updated")
 
-        # 2. Patch studio_worker.dll (Export bypass)
-        with open(self.dll_path, "r+b") as f:
-            dll_data = f.read()
+        # 2. Ensure studio_worker.dll is kept in clean stock state (never corrupt FilterDispatcher)
+        if os.path.exists(self.dll_path):
+            with open(self.dll_path, "r+b") as f:
+                dll_data = f.read()
+                if b'\xE9\x2C\xFF\xFF\xFF\x90\x90' in dll_data:
+                    off = dll_data.find(b'\xE9\x2C\xFF\xFF\xFF\x90\x90')
+                    f.seek(off)
+                    f.write(b'\x48\x8B\x82\x88\x00\x00\x00')
+                    print(f" -> Restored clean stock FilterDispatcher in studio_worker.dll at 0x{off:X}")
 
-            # FilterDispatcher: 48 8B 82 88 00 00 00 -> E9 2C FF FF FF 90 90
-            p_disp_s = re.compile(rb'\x48\x8B\x82\x88\x00\x00\x00\x48\x8D\x3D.{4}\x48\x85\xC0\x48\x0F\x45\xF8')
-            p_disp_p = re.compile(rb'\xE9\x2C\xFF\xFF\xFF\x90\x90\x48\x8D\x3D.{4}\x48\x85\xC0\x48\x0F\x45\xF8')
-            m = (p_disp_s if enable else p_disp_p).search(dll_data)
-            if m:
-                f.seek(m.start())
-                f.write(b"\xE9\x2C\xFF\xFF\xFF\x90\x90" if enable else b"\x48\x8B\x82\x88\x00\x00\x00")
-                print(f" -> Motion ND FilterDispatcher export bypass updated at 0x{m.start():X}")
-
-        print("[OK] Motion ND Fix & Export Bypass successfully updated!")
+        print("[OK] Motion ND Default OFF successfully updated!")
 
     # --------------------------------------------------------------------------
     # Patch 3: Export Dialog Noise Reduction Toggle (2.4x Speedup)
