@@ -11,6 +11,7 @@ __pycache__/
 *$py.class
 .vscode/
 .idea/
+.DS_Store
 
 # Keep mod scripts and utilities
 !*.pyw

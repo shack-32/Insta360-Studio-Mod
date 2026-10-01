@@ -38,14 +38,14 @@
     },
     {
       "target": "Insta360 Studio.exe",
-      "name": "Media Load LUT Property Flag",
-      "description": "Sets the LUT property flag to true on media loading.",
+      "name": "Default LUT Off on Media Load",
+      "description": "Sets the LUT property flag to false (0) on media loading, ensuring LUT is never enabled by default until the user explicitly toggles it.",
       "file_offset": "0x3750A25",
       "virtual_address": "0x143751425",
       "original_hex": "0FB6D0",
-      "patched_hex": "B20190",
+      "patched_hex": "31D290",
       "instructions_original": "movzx edx, al",
-      "instructions_patched": "mov dl, 1; nop"
+      "instructions_patched": "xor edx, edx; nop"
     },
     {
       "target": "Insta360 Studio.exe",

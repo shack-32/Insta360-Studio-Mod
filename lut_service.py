@@ -70,6 +70,20 @@ def format_lut_label(filename):
         name = name[:24] + ".."
     return name
 
+def reset_to_stock():
+    stock_path = os.path.join(CUSTOM_LUTS_DIR, "00_Stock_Rec709.cube")
+    if not os.path.exists(stock_path):
+        return False
+    success = 0
+    for target in TARGET_LUTS:
+        dest = os.path.join(STUDIO_ILOG_DIR, target)
+        try:
+            shutil.copyfile(stock_path, dest)
+            success += 1
+        except Exception:
+            pass
+    return success == len(TARGET_LUTS)
+
 def get_active_index(files):
     sample = os.path.join(STUDIO_ILOG_DIR, TARGET_LUTS[0])
     if not os.path.exists(sample) or not files:
@@ -134,6 +148,19 @@ class LutRequestHandler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(resp)
 
+        elif path == "/reset":
+            ok = reset_to_stock()
+            resp = json.dumps({
+                "status": "ok" if ok else "error",
+                "active": "00_Stock_Rec709.cube",
+                "index": 0
+            }).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(resp)))
+            self.end_headers()
+            self.wfile.write(resp)
+
         elif path == "/switch":
             idx = int(query.get("index", [0])[0])
             if 0 <= idx < len(files):
@@ -166,6 +193,7 @@ class LutRequestHandler(BaseHTTPRequestHandler):
             self.end_headers()
 
 def run_server():
+    reset_to_stock()
     server = ThreadingHTTPServer(("127.0.0.1", PORT), LutRequestHandler)
     server.daemon_threads = True
     server.serve_forever()
