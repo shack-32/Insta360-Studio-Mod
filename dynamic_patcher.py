@@ -452,6 +452,7 @@ class DynamicPatcher:
                                     '                                id: denoiseCheckBox\n'
                                     '                                checked: false\n'
                                     '                                text: "Noise Reduction (Default OFF = Grain, 2.4x Speed)"\n'
+                                    '                                Component.onCompleted: root.checkDenoiseState()\n'
                                     '                                onToggled: {\n'
                                     '                                    root.setDenoiseState(checked)\n'
                                     '                                }\n'
@@ -488,11 +489,6 @@ class DynamicPatcher:
                                 root_idx = mod.find('Item {\n    id: root')
                                 insert_pos = mod.find('\n', root_idx + 20)
                                 mod = mod[:insert_pos] + methods + mod[insert_pos:]
-
-                                on_comp = mod.find('Component.onCompleted:')
-                                if on_comp != -1:
-                                    brace = mod.find('{', on_comp)
-                                    mod = mod[:brace+1] + '\n        Qt.callLater(root.checkDenoiseState);' + mod[brace+1:]
 
                                 clean = re.sub(r'// [^\n]*\n', '\n', mod)
                                 clean_bytes = clean.encode('utf-8')
